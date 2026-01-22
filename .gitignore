@@ -1,0 +1,88 @@
+# -----------------------------------------------------------------------------
+# Repository .gitignore for checklist (PHP / Composer / Node)                     
+# - Ignores archives (.zip, .tar, etc.) and writable folder contents as requested
+# - Keeps a placeholder '.gitkeep' if present to allow tracking empty folders
+# -----------------------------------------------------------------------------
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Composer / PHP
+/vendor/
+composer.phar
+
+# Build / distribution
+/dist/
+build/
+builds/
+dist_old/
+public/build/
+public/assets/
+
+# Logs and runtime files
+*.log
+error_log
+php_errors.log
+
+# Environment files
+.env
+.env.*
+env.bak
+.env.local
+
+# PHPUnit / coverage
+.phpunit.result.cache
+coverage/
+coverage-*.xml
+phpunit.xml
+
+# Writable, uploads and runtime-generated assets
+writable/
+writable/**
+# keep .gitkeep if you intentionally add it to keep the folder structure
+!writable/.gitkeep
+uploads/
+assets/uploads/
+
+# Digital signs or generated images (optional - change if you track these)
+assets/digital_signs/
+
+# Archive files (explicitly ignore .zip per request)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Temporary and backup files
+*.bak
+*.tmp
+tmp/
+temp/
+
+# Compressed DB backups (keep plain .sql if you track migrations)
+*.sql.gz
+*.sql.zip
+
+# Misc
+*.cache
+*.swp
+
+# Map and minified build artifacts
+*.min.js
+*.min.css
+*.map
+
+# End of file

@@ -1,0 +1,212 @@
+Master Setup (One-time)
+HkItemsController CRUD for items (common across branches).
+HkBranchIdealQty table holds ideal quantity per item per branch.
+Opening Stock Entry
+StockController::addOpeningStock to set initial stock for each branch+item. This populates hk_opening_stock and hk_stock_balances.opening_qty.
+Periodic Stock Verification & Consumption (Cycles)
+Define cycles by date ranges (Cycle 1: 1–10, Cycle 2: 11–20, Cycle 3: 21–EOM).
+Supervisor visits are recorded in hk_visits with cycle_no and date.
+During a visit, consumption entries (hk_consumptions) are recorded per item.
+Once a cycle is submitted by supervisor, entries are locked (locked='Y') and not editable except by Admin.
+Auto Stock Balance Calculation
+On each receipt or consumption insert/update, call recalcBalance(branch_id, hk_item_id) to update hk_stock_balances totals.
+current_balance computed as opening + total_received - total_consumed (or maintain it via triggers/model logic).
+Monthly Indent & Stock Receipt Entry
+Use existing HKRequirements (monthly indents) to create a monthly requirement; existing flow already prevents duplicate month+branch.
+When indent approved and items are procured/received, record receipts in hk_stock_receipts, update hk_stock_balances.
+Approval Workflow
+ApprovalController handles Admin approvals for indents (update hk_requirements.status). On approve, notify via NotificationsController (WhatsApp).
+BM/ADMIN roles controlled by JWT verification (reuse existing JwtService and role-based filters).
+Reports & Alerts
+ReportsController provides:
+Branch-wise consumption
+Item-wise monthly consumption
+Ideal vs actual usage
+Stock balance reports and low-stock alerts (compare current_balance < ideal_qty).
+Auto notifications (hk_notifications) queued when low stock or new indent created — process with a Cron or background worker to send WhatsApp (reuse your WhatsappController).
+Security & transactions:
+
+Wrap multi-step operations in DB transactions (already done in HKRequirements).
+Validate role-based permissions (ADMIN, BM, HK_SUPERVISOR).
+Lock cycles to prevent edits after submission.
+Validate numeric data and guard against race conditions on balance updates (use row lock or transactions).
+Integration with your existing code:
+
+Reuse HkMaterialsModel as hk_items (rename or extend).
+Keep HKRequirements and HKDetails as monthly indent tables (no need to duplicate).
+Add model methods (getBalance, recalcBalance, getConsumptionByCycle) and call them from controllers.
+Use processFileUpload pattern (already implemented) for receipts/indent attachments.
+Next steps (suggested incremental tasks):
+
+Create migration scripts for tables above.
+Scaffold models and controllers (skeletons shown above).
+Implement recalcBalance logic and unit tests around receipts/consumptions and balance recomputation.
+Add report endpoints and background job to send WhatsApp messages.
+Add front-end forms / API docs and test flows with Postman.
+If you want, I can:
+
+Scaffold the DB migration files and model classes for the most critical tables (hk_items, hk_opening_stock, hk_consumptions, hk_stock_balances).
+Provide a starter implementation of StockController::recordReceipt and recalcBalance with transaction handling.
+
+
+-- HK Item master (master list used across branches)
+CREATE TABLE hk_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  brand VARCHAR(100),
+  unit VARCHAR(50),           -- e.g. Nos / Kg / Ltr / Pack
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT NULL
+);
+
+-- Branch-wise ideal quantities (reference for indents & alerts)
+CREATE TABLE hk_branch_ideal_qty (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  hk_item_id INT NOT NULL,
+  ideal_qty DECIMAL(12,2) DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(branch_id, hk_item_id),
+  INDEX(idx_branch_item) (branch_id, hk_item_id)
+);
+
+-- Branch opening stock (one-time editable)
+CREATE TABLE hk_opening_stock (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  hk_item_id INT NOT NULL,
+  opening_qty DECIMAL(12,2) DEFAULT 0,
+  created_by VARCHAR(50),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX(idx_branch) (branch_id)
+);
+
+-- Stock received (manual entry when receiving items)
+CREATE TABLE hk_stock_received (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  hk_item_id INT NOT NULL,
+  received_qty DECIMAL(12,2) NOT NULL,
+  received_dt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  source VARCHAR(100) DEFAULT NULL,
+  created_by VARCHAR(50),
+  notes TEXT
+);
+
+-- Stock consumption entries (per cycle visit)
+CREATE TABLE hk_consumptions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  hkv_visit_id INT NULL,
+  branch_id INT NOT NULL,
+  hk_item_id INT NOT NULL,
+  cycle_no TINYINT NOT NULL, -- 1/2/3
+  cycle_from DATE,
+  cycle_to DATE,
+  consumed_qty DECIMAL(12,2) NOT NULL,
+  recorded_by VARCHAR(50),
+  recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  locked CHAR(1) DEFAULT 'N',
+  INDEX(idx_branch_item_cycle) (branch_id, hk_item_id, cycle_no)
+);
+
+-- Supervisor visits (for tracking visits and locking)
+CREATE TABLE hk_visits (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  visit_dt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  cycle_no TINYINT,
+  supervisor_empcode VARCHAR(50),
+  remarks TEXT
+);
+
+-- Precomputed balances (auto-calculated, optional materialized table)
+CREATE TABLE hk_stock_balances (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  hk_item_id INT NOT NULL,
+  opening_qty DECIMAL(12,2) DEFAULT 0,
+  total_received DECIMAL(12,2) DEFAULT 0,
+  total_consumed DECIMAL(12,2) DEFAULT 0,
+  current_balance DECIMAL(12,2) GENERATED ALWAYS AS (opening_qty + total_received - total_consumed) STORED,
+  last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE(branch_id, hk_item_id)
+);
+
+
+-- WhatsApp/notification log
+CREATE TABLE hk_notifications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  type VARCHAR(50), -- e.g. indent_admin, indent_bm, low_stock_alert
+  payload JSON,
+  status VARCHAR(30) DEFAULT 'pending',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  sent_at DATETIME NULL
+);
+ 
+
+<?php
+<?php
+namespace App\Controllers;
+use App\Controllers\BaseController;
+use CodeIgniter\API\ResponseTrait;
+
+class HkItemsController extends BaseController {
+  use ResponseTrait;
+  public function index() { /* GET /hk/items -> list */ }
+  public function show($id) { /* GET /hk/items/{id} */ }
+  public function create() { /* POST -> add item */ }
+  public function update($id) { /* PUT -> update item */ }
+  public function delete($id) { /* DELETE -> delete item (if safe) */ }
+}
+
+<?php
+<?php
+namespace App\Controllers;
+use App\Controllers\BaseController;
+use CodeIgniter\API\ResponseTrait;
+
+class StockController extends BaseController {
+  use ResponseTrait;
+  public function addOpeningStock() { /* POST: branch_id, items[] */ }
+  public function recordReceipt() { /* POST: receipts -> insert + update balances */ }
+  public function getBalance($branch_id, $hk_item_id=null) { /* GET current balance(s) */ }
+  private function recalcBalance($branch_id, $hk_item_id) { /* recompute & update hk_stock_balances */ }
+}
+
+<?php
+<?php
+namespace App\Controllers;
+use App\Controllers\BaseController;
+use CodeIgniter\API\ResponseTrait;
+
+class ConsumptionController extends BaseController {
+  use ResponseTrait;
+  public function recordCycleConsumption() { /* POST -> record consumptions (lock on submit) */ }
+  public function getCycle($branch_id, $month) { /* GET -> cycles & entries */ }
+}
+<?php
+<?php
+namespace App\Controllers;
+use App\Controllers\BaseController;
+use CodeIgniter\API\ResponseTrait;
+
+class ApprovalController extends BaseController {
+  use ResponseTrait;
+  public function approveIndent($hkr_id) { /* Admin approval, triggers notifications */ }
+  public function rejectIndent($hkr_id) { /* reject with remarks */ }
+}
+
+<?php
+<?php
+namespace App\Controllers;
+use App\Controllers\BaseController;
+use CodeIgniter\API\ResponseTrait;
+
+class ReportsController extends BaseController {
+  use ResponseTrait;
+  public function consumptionReport($branch_id, $month) {}
+  public function balanceReport($branch_id) {}
+  public function pendingIndents() {}
+}
+
+

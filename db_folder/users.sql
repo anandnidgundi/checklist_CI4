@@ -1,0 +1,275 @@
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Host: 127.0.0.1
+-- Generation Time: Oct 23, 2024 at 01:57 PM
+-- Server version: 10.4.32-MariaDB
+-- PHP Version: 8.2.12
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Database: `maintenance`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `users`
+--
+
+CREATE TABLE `users` (
+  `USER-ID` varchar(10) NOT NULL,
+  `USER_NAME` varchar(60) NOT NULL,
+  `USER_PWD` varchar(100) NOT NULL,
+  `IS_ADMIN` char(1) NOT NULL DEFAULT 'N',
+  `AC_TYPE` varchar(100) NOT NULL,
+  `BIO` char(1) NOT NULL DEFAULT 'N',
+  `CREATED_BY` varchar(10) NOT NULL,
+  `CREATED_ON` date NOT NULL,
+  `EDITED_BY` varchar(10) NOT NULL,
+  `EDITED_ON` date NOT NULL,
+  `STATUS` char(1) NOT NULL DEFAULT 'A',
+  `BRANCH` int(11) NOT NULL,
+  `VALIDITY` date NOT NULL,
+  `EMAIL` varchar(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+--
+-- Dumping data for table `users`
+--
+
+INSERT INTO `users` (`USER-ID`, `USER_NAME`, `USER_PWD`, `IS_ADMIN`, `AC_TYPE`, `BIO`, `CREATED_BY`, `CREATED_ON`, `EDITED_BY`, `EDITED_ON`, `STATUS`, `BRANCH`, `VALIDITY`, `EMAIL`) VALUES
+('005', 'Kavuri Hills-05', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'USER', 'N', '105798', '2023-06-08', '106475', '2024-10-14', 'I', 1027, '2025-01-12', 'kavuri@gmail.com'),
+('01', 'Training Center ', '2f10d233ce3061c12c4bb43f28c52f79', 'N', 'USER', 'N', '106475', '2024-06-12', '106475', '2024-10-14', 'I', 10, '2025-01-12', 'training@vijayadiagnostic.in'),
+('03', 'Kokapet-03', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '106475', '2024-10-22', 'A', 1026, '2025-01-12', 'kokapet@vijayadiagnostic.in'),
+('04', 'Sangareddy-04', 'a0337f913ccfc105296dcbfb55eb93da', 'N', 'USER', 'N', '105798', '2023-06-08', '04', '2024-09-19', 'A', 1025, '2024-10-19', 'sangareddy@vijayadiagnostic.in'),
+('05', 'Kavuri Hills-05', '577b01de698c8bde617316b82707823f', 'N', 'USER', 'N', '105798', '2023-06-28', '05', '2024-10-04', 'A', 1027, '2024-11-03', 'kavurihills@vijayadiagnostic.in'),
+('06', 'Dwarakanagar-06', 'e7d39afa4db5a0b7270d35a6e3f5430a', 'N', 'USER', 'N', '105798', '2023-06-08', '06', '2024-09-12', 'A', 1030, '2024-10-12', 'dwarakanagar@vijayadiagnostic.in'),
+('06-LAB', 'Dwarakanagar-LAB', '7ec306042ff60dcf1151d9c455ef6064', 'N', 'USER', 'N', '105798', '2023-06-28', '06-LAB', '2024-09-20', 'A', 1035, '2024-10-20', 'dwarakanagar@vijayadiagnostic.in'),
+('07', 'Deepthi Srinagar-07', '0d4c6589fc8d7591dffcdedf23db1adb', 'N', 'USER', 'N', '105798', '2023-06-08', '07', '2024-09-08', 'A', 1031, '2024-10-08', 'deepthisrinagar@vijayadiagnostic.in'),
+('08', 'Mehdipatnam - 8', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '08', '2024-09-25', 'A', 8, '2024-10-25', 'mehdipatnam@vijayadiagnostic.in'),
+('10', 'Himayatnagar', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '10', '2024-10-05', 'A', 10, '2024-11-04', 'hmnr.frontoffice@vijayadiagnostic.in'),
+('100', 'PUPPALGUDA- 100', '711ad13cc4aa92b751e14de14a6725d3', 'N', 'USER', 'N', '105798', '2023-06-08', '100', '2024-09-13', 'A', 102, '2024-10-13', 'puppalaguda@vijayadiagnostic.in'),
+('1000', 'Trinath', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'MARKETING MANAGER', 'N', '106475', '2023-05-20', '', '0000-00-00', 'I', 10, '2023-10-06', ''),
+('1002', 'Test-1 Maint', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'MARKETING MANAGER', 'N', '106475', '2023-05-22', '', '0000-00-00', 'I', 14, '2023-10-06', ''),
+('100416', 'Vijaya Sree Mathe', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'Quality control', 'N', '106475', '2023-08-04', '', '0000-00-00', 'A', 10, '2023-10-06', 'vijayasree.mathe@vijayadiagnostic.in'),
+('100430', 'Rajesh Poojari', 'c5ea902be23d4d38735f3c0b515d641b', 'N', 'IT', 'N', '106475', '2023-10-06', '', '0000-00-00', 'A', 1033, '2023-10-06', 'rajesh.poojari@vijayadiagnostic.in'),
+('101', 'Medipally-101', 'a91127f01685a58b9e847884a2852f1d', 'N', 'USER', 'N', '105798', '2023-06-08', '101', '2024-09-30', 'A', 101, '2024-10-30', 'medipally@vijayadiagnostic.in'),
+('101135', 'Satya', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'MARKETING MANAGER', 'Y', '105798', '2023-08-01', '', '0000-00-00', 'A', 10, '2023-10-06', 'satya.vdc@gmail.com'),
+('102', 'Bachupally - 102', 'f96db88728081397cef2c2add1985f71', 'N', 'USER', 'N', '105798', '2023-06-08', '102', '2024-09-27', 'A', 129, '2024-10-27', 'bachupally@vijayadiagnostic.in'),
+('102135', 'Dr. P T S Shashikanth', 'e0e5b325c883482f741f02657da81a56', 'N', 'LAB', 'N', '106475', '2023-11-21', '', '0000-00-00', 'A', 10, '2023-12-21', 'dr.shashikanth@vijayadiagnostic.in'),
+('102535', 'Muni Sudhakar', 'e0e5b325c883482f741f02657da81a56', 'N', 'LAB-Others', 'N', '106475', '2023-11-21', '', '0000-00-00', 'A', 43, '2023-12-21', 'krl.lab@vijayadiagnostic.in'),
+('103', 'KAZIPET-103', '296f716b5f8bb1f96d27f288ea5b6a1d', 'N', 'USER', 'N', '105798', '2023-06-08', '103', '2024-07-10', 'A', 104, '2024-08-09', 'kazipet@vijayadiagnostic.in'),
+('103033', 'Ramalakshmi', '357a4f83a06782b7b950eb95ce12d571', 'N', 'ADMIN', 'N', '106475', '2023-11-03', '103033', '2024-07-03', 'A', 18, '2024-08-02', 'ramalakshmi@vijayadiagnostic.in'),
+('103595', 'Rabbani-IT', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'SUPER ADMIN', 'N', '106475', '2023-10-25', '103595', '2024-09-21', 'A', 1033, '2024-10-21', 'rabbani@vijayadiagnostic.in'),
+('103722', 'Satish Ducharla', '1ceec07c5c58200c67a28949de01267a', 'N', 'USER', 'N', '105798', '2023-06-30', '103722', '2024-03-06', 'A', 12, '2024-04-05', 'satish.ducharla@vijayadiagnostic.in'),
+('103941', 'Viswa', 'a0337f913ccfc105296dcbfb55eb93da', 'N', 'RMG', 'N', '106475', '2023-08-11', '103941', '2024-06-19', 'A', 10, '2024-07-19', 'vishwa@vijayadiagnostic.in'),
+('104', 'Madhava Nagar- 104', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '104', '2024-10-15', 'A', 103, '2024-10-26', 'madhavanagar@vijayadiagnostic.in'),
+('104369', 'Sai Praneeth', '47a91f6691dac98c12cc6cebe8a62025', 'N', 'LAB', 'N', '106475', '2023-11-21', '104369', '2024-03-04', 'A', 10, '2024-04-03', 'asst.labmgr1@vijayadiagnostic.in'),
+('104568', 'KK Chakravarthi', '9c892ac23779711bac03ec1396d1ca30', 'N', 'BIO MEDICAL', 'Y', '105798', '2023-06-23', '104568', '2024-09-21', 'A', 10, '2024-10-21', 'chakravarthi.koduru@vijayadiagnostic.in'),
+('105', 'Mancherial-105', 'ae279146a43ddb74cdc06c3d5d574225', 'N', 'USER', 'N', '105798', '2023-06-08', '105', '2024-10-01', 'A', 106, '2024-10-31', 'mancherial@vijayadiagnostic.in'),
+('105217', 'Rakesh Kiran', 'e0e5b325c883482f741f02657da81a56', 'Y', 'ADMIN', 'N', '106475', '2023-08-23', '105217', '2024-08-31', 'A', 1033, '2024-09-30', 'rakesh.k@vijayadiagnostic.in'),
+('105237', 'Suresh J', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'CLUSTER', 'N', '105798', '2023-08-01', '', '0000-00-00', 'A', 13, '2023-10-06', 'suresh.Jerupothula@vdc.in'),
+('105275', 'Saikrishna Rao M', '98a8efc336cd5d8140ae4e06784c3c55', 'N', 'BRANDING', 'N', '106475', '2023-06-30', '105275', '2024-03-27', 'A', 1033, '2024-04-26', 'saikrishna@vijayadiagnostic.in'),
+('105798', 'Ravi', 'f5ad05f856ed275944a61284199c9236', 'N', 'ADMIN', 'N', '106475', '2023-06-07', '105798', '2024-07-18', 'A', 10, '2024-08-17', 'ravi.avula@vijayadiagnostic.in'),
+('105934', 'Naga Sai Kumar Kale', 'ca7ab04d6921464af850255957bee978', 'N', 'CLUSTER', 'N', '106475', '2023-11-09', '105934', '2024-08-28', 'A', 10, '2024-09-27', 'nagasaikumar@vijayadiagnostic.in'),
+('105935', 'Vijaya Bhavani Palavalasa ', 'e0e5b325c883482f741f02657da81a56', 'Y', 'ADMIN', 'N', '106475', '2023-05-18', '105935', '2024-08-27', 'A', 10, '2024-09-26', 'bhavani@vijayadiagnostic.in'),
+('105953', 'Mahesh Babu', 'e0e5b325c883482f741f02657da81a56', 'Y', 'ADMIN', 'N', '106475', '2024-08-26', '', '0000-00-00', 'A', 10, '2024-09-25', 'it@vijayadiagnostic.in'),
+('105971', 'Sai Ram', 'e0e5b325c883482f741f02657da81a56', 'Y', 'ADMIN', 'N', '106475', '2024-06-08', '', '0000-00-00', 'A', 10, '2024-07-08', 'sairam@vijayadiagnostic.in'),
+('106', 'Ramji Nagar - 106', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '106', '2024-09-13', 'A', 118, '2024-10-13', 'ramjinagar.nlr@vijayadiagnostic.in'),
+('106475', 'Ram(IT)', '4fc367ef4e383dd66862dfa51f4f7200', 'Y', 'SUPER ADMIN', 'Y', '106475', '2023-05-06', '106475', '2024-10-11', 'A', 1000, '2025-09-04', 'ramakoteswararao@vijayadiagnostic.in'),
+('106677', 'Gopisetty Gopi', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'BIO MEDICAL', 'N', '105798', '2023-06-23', '', '0000-00-00', 'I', 12, '2023-10-06', ''),
+('107', 'Kapra-107', 'c163e7cea553fd9ccbd15e1bc5f5eda7', 'N', 'USER', 'N', '105798', '2023-06-08', '107', '2024-09-21', 'A', 107, '2024-10-21', 'kapra@vijayadiagnostic.in'),
+('107360', 'Srikanth', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'CLUSTER', 'N', '105798', '2023-08-01', '', '0000-00-00', 'A', 20, '2023-10-06', 'luckysrikanth49@gmail.com'),
+('107581', 'Kamlesh Yashwant Murudkar', '592254ac2dabcc6acc7bc6483676fa97', 'N', 'RMG', 'N', '106475', '2023-07-31', '107581', '2023-11-14', 'A', 1033, '2023-12-14', 'kamlesh@vijayadiagnostic.in'),
+('107655', 'Ravichandra_IT', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'IT', 'N', '107943', '2024-05-29', '107655', '2024-07-06', 'I', 1033, '2024-08-05', 'tech17@vijayadiagnostic.in'),
+('107670', 'Sailaja', 'e0e5b325c883482f741f02657da81a56', 'N', 'ADMIN', 'N', '106475', '2023-11-03', '', '0000-00-00', 'A', 10, '2023-12-03', 'sailaja.v@vijayadiagnostic.in'),
+('107712', 'Bethapudi Ravi Prakash', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'BIO MEDICAL', 'N', '105798', '2023-06-23', '', '0000-00-00', 'I', 10, '2023-10-06', ''),
+('107756', 'Sudharsan', '96e0b5b4e1bf5e29d103dfd918655a0f', 'N', 'MARKETING MANAGER', 'N', '105798', '2023-06-07', '107756', '2024-09-21', 'A', 20, '2024-10-21', 'vsudharshan069@gmail.com'),
+('107781', 'Uday_IT', '17a243d14c1a9eae14aa06e92770fc70', 'N', 'IT', 'N', '107943', '2023-10-24', '107781', '2024-06-01', 'A', 8, '2024-07-01', 'tech2@vijayadiagnostic.in'),
+('107802', 'Sudheer Vallamdas', 'df194d149c1ace03c26cd03251f4b787', 'N', 'MARKETING MANAGER', 'N', '105798', '2023-06-22', '107802', '2024-10-05', 'A', 18, '2024-11-04', 'vallamdassudheer@gmail.com'),
+('107816', 'Ajay Chodisetty', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2023-07-12', '107816', '2023-12-05', 'A', 1033, '2024-01-04', 'ajay.c@vijayadiagnostic.in'),
+('107879', 'Vijay Singh', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'BIO MEDICAL', 'N', '106475', '2023-07-01', '', '0000-00-00', 'I', 54, '2023-10-06', ''),
+('107882', 'Anand-IT', 'e0e5b325c883482f741f02657da81a56', 'N', 'IT', 'N', '106475', '2024-08-20', '', '0000-00-00', 'A', 1033, '2024-09-19', 'tech10@vijayadiagnostic.in'),
+('107894', 'Trinath Reddy', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'MARKETING MANAGER', 'N', '106475', '2023-06-07', '', '0000-00-00', 'I', 10, '2023-10-06', ''),
+('107915', 'Sai Gopi-IT', '801b260278fd2a200ab71bb487dbd924', 'N', 'IT', 'N', '106475', '2023-07-06', '107915', '2024-10-03', 'A', 1033, '2024-11-02', 'tech27@vijayadiagnostic.in'),
+('107917', 'Mojesh-IT', 'bfbee0dcd86fcb0c37176266641e70b8', 'N', 'IT', 'N', '106475', '2023-07-06', '107917', '2024-04-20', 'A', 1033, '2024-05-20', 'tech24@vijayadiagnostic.in'),
+('107926', 'Kamal', 'e0e5b325c883482f741f02657da81a56', 'N', 'IT', 'N', '106475', '2023-07-26', '107926', '2024-09-05', 'A', 1033, '2024-10-05', 'tech28@vijayadiagnostic.in'),
+('107943', 'Bharath Chandra -IT', 'e0e5b325c883482f741f02657da81a56', 'N', 'IT', 'N', '106475', '2023-10-16', '107943', '2024-08-30', 'A', 1033, '2024-09-29', 'tech22@vijayadiagnostic.in'),
+('107944', 'prasahnth -IT', 'e0e5b325c883482f741f02657da81a56', 'N', 'IT', 'N', '107943', '2024-09-02', '107944', '2024-09-27', 'A', 1033, '2024-10-27', 'tech3@vijayadiagnostic.in'),
+('108', 'AKRUTHI TOWNSHIP-108', '5b8da9a3a48a4dc77f90bf924f7e8bbd', 'N', 'USER', 'N', '105798', '2023-06-08', '108', '2024-09-21', 'A', 117, '2024-10-21', 'akruthitownship@vijayadiagnostic.in'),
+('108007', 'Venkat Rao', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'CLUSTER', 'N', '105798', '2023-08-01', '', '0000-00-00', 'A', 23, '2023-10-06', 'Pasam.Venkatarao@vdcl.in'),
+('108224', 'Ram New', 'e0e5b325c883482f741f02657da81a56', 'N', 'IT', 'N', 'admin', '2023-05-17', '108224', '2024-05-31', 'A', 1000, '2024-06-30', 'ramakoteswararao@vijayadiagnostic.in'),
+('108416', 'Mohammed Jabeer', '89a0ad0534b987ae6b07d75aca710338', 'N', 'CLUSTER', 'N', '105798', '2023-08-01', '108416', '2024-09-07', 'A', 18, '2024-10-07', 'mdjabeer99@gmail.com'),
+('108600', 'Sathish', 'e0e5b325c883482f741f02657da81a56', 'N', 'ADMIN', 'N', '106475', '2023-11-03', '', '0000-00-00', 'A', 10, '2023-12-03', 't.sathish@vijayadiagnostic.in'),
+('108620', 'Syed Shafi', 'e20f517179e9cd52ae29dae43c121b95', 'N', 'MARKETING MANAGER', 'N', '105798', '2023-07-03', '108620', '2024-03-28', 'A', 20, '2024-04-27', 'syedsharif261@gmail.com'),
+('108650', 'Santosh Kumar', 'e0e5b325c883482f741f02657da81a56', 'N', 'MARKETING MANAGER', 'N', '105798', '2023-07-03', '108650', '2023-11-20', 'I', 10, '2023-12-20', ''),
+('108654', 'Srikanth', '219cbcff565bf60539abee379f2b0c28', 'N', 'BRANDING', 'N', '107917', '2023-07-06', '108654', '2024-09-30', 'A', 1033, '2024-10-30', 'srikanth.n@vijayadiagnostic.in'),
+('108859', 'Sathrughna', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'CLUSTER', 'N', '105798', '2023-08-01', '', '0000-00-00', 'A', 70, '2023-10-06', 'sathrughnasaithana17@gmail.com'),
+('108869', 'Karthik', 'd93281953ef37ad07d118a4bf613601e', 'N', 'CLUSTER', 'N', '105798', '2023-08-01', '108869', '2024-03-24', 'A', 997, '2024-04-23', 'karthikkallypally@gmail.com'),
+('108916', 'Susovan Mandal', '6d06a2f490083a6763d6037673302447', 'N', 'MARKETING MANAGER', 'N', '106475', '2023-11-24', '108916', '2024-09-13', 'A', 1040, '2024-10-13', 'susovanmandal.94@gmail.com'),
+('108977', 'Niranjan', '37cb549ffc6afb7f9a142a0166d781b7', 'N', 'MARKETING MANAGER', 'N', '105798', '2023-08-10', '108977', '2024-02-09', 'A', 10, '2024-03-10', 'niranjanrao53@gmail.com'),
+('109', 'Ghandhinagar-Nellore-109', 'c163e7cea553fd9ccbd15e1bc5f5eda7', 'N', 'USER', 'N', '105798', '2023-06-08', '109', '2024-09-26', 'A', 1029, '2024-10-26', 'gandhinagar@vijayadiagnostic.in'),
+('109046', 'Arun', '0d848f03e68250c3200c8dda1a09701f', 'N', 'MARKETING MANAGER', 'N', '105798', '2023-08-23', '109046', '2024-10-04', 'A', 12, '2024-11-03', 'arunkumar246.246@gmail.com'),
+('109051', 'Amit Chakraborty	', 'dd04e35e6a4151df3ff007b80b6fec08', 'N', 'ADMIN', 'N', '105798', '2023-08-25', '109051', '2024-09-27', 'A', 10, '2024-10-27', 'amit.chakraborty@vijayadiagnostic.in'),
+('109139', 'Yeshwanth Sai', 'ef7718c20a6c9678f6f721a10ba0d45a', 'N', 'BIO MEDICAL', 'N', '106475', '2023-11-03', '109139', '2024-09-30', 'A', 10, '2024-10-30', 'sunnamyeshwanth22@gmail.com'),
+('109417', 'Bhavani', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2024-01-18', '109417', '2024-05-29', 'A', 87, '2024-06-28', 'lbnagar.incharge@vijayadiagnostic.in'),
+('109432', 'Raja Gopal G', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '107943', '2024-07-29', '', '0000-00-00', 'A', 10, '2024-08-28', 'vdc@vijayadiagnostic.in'),
+('109596', 'Tej', 'd11e49f71c5819c9d58e75227b1aaf12', 'N', 'ADMIN', 'N', '106475', '2024-02-24', '109596', '2024-09-23', 'A', 10, '2024-10-23', 'tejakumar.g@vijayadiagnostic.in'),
+('109705', 'S.Rajesh', 'cabf031d5e3dc279f3856ac9a4fdde7d', 'N', 'MARKETING MANAGER', 'N', '106475', '2024-05-06', '109705', '2024-09-27', 'A', 10, '2024-10-27', 'srajesh192@gmail.com'),
+('109729', 'Ramesh Konapur', 'e0e5b325c883482f741f02657da81a56', 'N', 'CLUSTER', 'N', '107943', '2024-07-29', '', '0000-00-00', 'A', 10, '2024-08-28', 'ramesh.k@vijayadiagnostic.in'),
+('109738', 'Shaik Riyaz Hussain ', 'e0e5b325c883482f741f02657da81a56', 'N', 'CLUSTER', 'N', '106475', '2024-05-20', '', '0000-00-00', 'A', 70, '2024-06-19', 'shaikriyazhussain8@gmail.com'),
+('109815', 'Santosh Kumar', '3154e5346342bd0e74366357fc3bf00e', 'N', 'MARKETING MANAGER', 'N', '106475', '2024-05-28', '109815', '2024-09-25', 'A', 20, '2024-10-25', 'kummarisantsosh.084@gmail.com'),
+('109890', 'Praveen', 'a0337f913ccfc105296dcbfb55eb93da', 'N', 'USER', 'N', '106475', '2024-08-06', '109890', '2024-09-28', 'A', 10, '2024-10-28', 'praveenkumark@vijayadiagnostic.in'),
+('11', 'Kushaiguda-11', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '11', '2024-08-21', 'A', 11, '2024-09-20', 'kushaiguda@vijayadiagnostic.in'),
+('110', 'BN Reddy Nagar-110', '2ad5acf36ed93961ccf11c04960517fb', 'N', 'USER', 'N', '105798', '2023-06-08', '110', '2024-09-09', 'A', 110, '2024-10-09', 'bnreddynagar.incharge@vijayadiagnostic.in'),
+('111', 'Vaidehinagar-111', 'c1b5c05fc513da67f1bf77c24c88b5e6', 'N', 'USER', 'N', '105798', '2023-06-08', '111', '2024-09-11', 'A', 105, '2024-10-11', 'vaidehinagar@vijayadiagnostic.in'),
+('112', 'Madinaguda -112', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-08', '112', '2024-09-28', 'A', 112, '2024-10-28', 'madinaguda@vijayadiagnostic.in'),
+('113', 'Shamshabad-2 -113', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-08', '113', '2024-09-19', 'A', 119, '2024-10-19', 'shamshabad2@vijayadiagnostic.in'),
+('114', 'kismatpur-114', 'bcb805f213825ecd251171ff01f728b5', 'N', 'USER', 'N', '105798', '2023-06-08', '114', '2024-09-18', 'A', 122, '2024-10-18', 'kismatpur@vijayadiagnostic.in'),
+('115', 'Qcity', 'd0a0b2a865e86295e85dbdfe9a8e5903', 'N', 'USER', 'N', '105798', '2023-06-08', '115', '2024-09-13', 'A', 127, '2024-10-13', 'qcity@vijayadiagnostic.in'),
+('116', 'Eshwaripuri  - 116', 'becc2c6270c817fd7519e6d14ee646ab', 'N', 'USER', 'N', '105798', '2023-06-08', '116', '2024-10-02', 'A', 116, '2024-11-01', 'eshwaripuri@vijayadiagnostic.in'),
+('117', 'Budvel 117', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-08', '117', '2024-09-20', 'A', 123, '2024-10-20', 'budvel@vijayadiagnostic.in'),
+('118', 'Rajahmundry-118', '51df898878b97b3f2b267b7587710b69', 'N', 'USER', 'N', '105798', '2023-06-08', '118', '2024-09-04', 'A', 121, '2024-10-04', 'rajahmundry@vijayadiagnostic.in'),
+('119', 'Shadnagar-119', '762ea9d045845f6ac277ef24720bd9cd', 'N', 'USER', 'N', '105798', '2023-06-08', '119', '2024-09-28', 'A', 131, '2024-10-28', 'shadnagar@vijayadiagnostic.in'),
+('1190', 'Suresh', 'e0e5b325c883482f741f02657da81a56', 'N', 'BIO MEDICAL', 'N', '106475', '2023-11-03', '', '0000-00-00', 'A', 10, '2023-12-03', ''),
+('12', 'Dilsukhnagar - 12', 'f9600a85a27d08dbf8bde59aa5b303e3', 'N', 'USER', 'N', '105798', '2023-06-08', '12', '2024-09-10', 'A', 12, '2024-10-10', 'dilsukhnagar@vijayadiagnostic.in'),
+('120', 'RL NAGAR - 120', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '120', '2024-10-03', 'A', 120, '2024-11-02', 'rlnagar@vijayadiagnostic.in'),
+('121', 'Panjagutta-121', 'a0337f913ccfc105296dcbfb55eb93da', 'N', 'USER', 'N', '105798', '2023-06-08', '121', '2024-09-19', 'A', 133, '2024-10-19', 'panjagutta@vijayadiagnostic.in'),
+('122', 'Mehernagar - Karimnagar-122', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'USER', 'N', '105798', '2023-06-08', '', '0000-00-00', 'A', 1028, '2023-10-06', 'meharnagar@vijayadiagnostic.in'),
+('123', 'Dhoolapally-123', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '123', '2024-09-12', 'A', 132, '2024-10-12', 'dhulapally@vijayadiagnostic.in'),
+('1234', 'ttt', 'e0e5b325c883482f741f02657da81a56', 'N', 'IT', 'Y', '106475', '2024-10-14', '', '0000-00-00', 'A', 37, '2024-11-13', 'anand.nidgundi@gmail.com'),
+('123456', 'Vijaya', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2024-10-14', '', '0000-00-00', 'A', 5, '2024-11-13', 'anand.nidgundi@gmail.com'),
+('124', 'Badangpet-124', '70dc3de37d2fdd09280e5961f3e6aa27', 'N', 'USER', 'N', '105798', '2023-06-08', '124', '2024-10-02', 'A', 124, '2024-11-01', 'badangpet@vijayadiagnostic.in'),
+('125', 'Kondapur HT Line', '45c76026c344db02c9ffde8ebf14f3d7', 'N', 'USER', 'N', '105798', '2023-06-08', '125', '2024-10-01', 'A', 128, '2024-10-31', 'kondapur.htline@vijayadiagnostic.in'),
+('126', 'Kattedan-126', '908f05b35871fa9d6d36f30ec6ccdf67', 'N', 'USER', 'N', '105798', '2023-06-08', '126', '2024-09-09', 'A', 125, '2024-10-09', 'kattedan@vijayadiagnostic.in'),
+('127', 'Shaikpet-127', 'f837c3a78cd428d2c1fd714bb021f16c', 'N', 'USER', 'N', '105798', '2023-06-08', '127', '2024-10-04', 'A', 130, '2024-11-03', 'shaikpet.incharge@vijayadiagnostic.in'),
+('128', 'Mokila-128', '7ce89bf5d074e68bd2333813a5287f0f', 'N', 'USER', 'N', '105798', '2023-06-08', '128', '2024-10-02', 'A', 126, '2024-11-01', 'mokila@vijayadiagnostic.in'),
+('13', 'Sec II S D Road - 13', 'd33a32b39e84881bd86ac7716bb8dac4', 'N', 'USER', 'N', '105798', '2023-06-08', '13', '2024-09-05', 'A', 13, '2024-10-05', 'secunderabadnew@vijayadiagnostic.in'),
+('130', 'Tirupati-130', 'eb0b0f2459ff8ff56d0e02cab6e75546', 'N', 'USER', 'N', '105798', '2023-06-08', '130', '2024-09-19', 'A', 1012, '2024-10-19', 'tirupathi@vijayadiagnostic.in'),
+('131', 'Wanaparthy-131', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '131', '2024-08-21', 'A', 1013, '2024-09-20', 'wanaparty@vijayadiagnostic.in'),
+('132', 'Seethammadhara-132', '72a06624cb2ac432c586d516e9a909ad', 'N', 'USER', 'N', '105798', '2023-06-08', '132', '2024-09-17', 'A', 113, '2024-10-17', 'seethammadhara@vijayadiagnostic.in'),
+('133', 'Gajuwaka-133', '9fe2e71803d9aac0522980c3d3ff63f0', 'N', 'USER', 'N', '105798', '2023-06-08', '133', '2024-09-16', 'A', 1015, '2024-10-16', 'gajuwaka@vijayadiagnostic.in'),
+('134', 'Malkajgiri-134', 'c163e7cea553fd9ccbd15e1bc5f5eda7', 'N', 'USER', 'N', '105798', '2023-06-08', '134', '2024-09-21', 'A', 134, '2024-10-21', 'malkajgiri@vijayadiagnostic.in'),
+('137', 'Addagutta-137', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '137', '2024-06-28', 'A', 1016, '2024-07-28', 'addagutta@vijayadiagnostic.in'),
+('138', 'Sujatha Nagar -138', '97060cb16ceaac7f809fd3f9c8e49c5e', 'N', 'USER', 'N', '106475', '2023-08-03', '138', '2024-09-25', 'A', 1020, '2024-10-25', 'sujathanagar@vijayadiagnostic.in'),
+('139', 'NFC Mallapur-139', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '139', '2024-09-20', 'A', 1022, '2024-10-20', 'mallapur@vijayadiagnostic.in'),
+('14', 'Ameerpet - 14', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '14', '2024-09-20', 'A', 14, '2024-10-20', 'ameerpet@vijayadiagnostic.in'),
+('140', 'Vasathnagar-140', 'e30dee37d6a9e4378d3361de17a5861d', 'N', 'USER', 'N', '105798', '2023-06-08', '140', '2024-08-31', 'A', 1017, '2024-09-30', 'vasanthanagar@vijayadiagnostic.in'),
+('141', 'Nandyal - Ekalavya Nagar-141', '041bc447a1aa0cf90e1b3c92d05f96ef', 'N', 'USER', 'N', '105798', '2023-06-08', '141', '2024-10-01', 'A', 1024, '2024-10-31', 'nandyal@vijayadiagnostic.in'),
+('142', 'Madhavinagar Society-142', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '142', '2024-10-04', 'A', 1018, '2024-11-03', 'madhavanagar@vijayadiagnostic.in'),
+('143', 'Nizampet HT Line-143', '5dbbf7ad2ad36f4c74337baa6c7712e0', 'N', 'USER', 'N', '105798', '2023-06-08', '143', '2024-08-29', 'A', 1019, '2024-09-28', 'nizampet@vijayadiagnostic.in'),
+('144', 'Gulbarga-144', '9660b93a0076d5097dbd0233ef90c8cb', 'N', 'USER', 'N', '103595', '2023-11-15', '144', '2024-09-17', 'A', 1039, '2024-10-17', 'kalaburagi@vijayadiagnostic.in'),
+('145', 'Onetown Kurnool-145', 'a6696b8f167bc91273b2262e9dcbbc17', 'N', 'USER', 'N', '105798', '2023-06-08', '145', '2024-08-21', 'A', 1023, '2024-09-20', 'kurnool_onetown@vijayadiagnostic.in'),
+('146', 'Mahbubnagar-146', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-10-13', '146', '2024-10-03', 'A', 1037, '2024-11-02', 'mahabubnagar@vijayadiagnostic.in'),
+('147', 'Turkhayamzal-147', '4136fc4396aac64c345c4d75ae5e70fb', 'N', 'USER', 'N', '106475', '2023-11-10', '147', '2024-10-01', 'A', 1034, '2024-10-31', 'turkayamjal@vijayadiagnostic.in'),
+('148', 'Hussaini alam-148', 'd4258b72aa881e163b9f2c4aeb74fb86', 'N', 'USER', 'N', '105798', '2023-06-08', '148', '2024-09-18', 'A', 1021, '2024-10-18', 'hussainialam@vijayadiagnostic.in'),
+('15', 'Santosh Nagar - 15', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-08', '15', '2024-09-30', 'A', 15, '2024-10-30', 'santoshnagar@vijayadiagnostic.in'),
+('150', 'Hayath Nagar', '968cb2c6cd3f66e7074ce9ef258aa0d6', 'N', 'USER', 'N', '106475', '2023-11-04', '150', '2024-09-30', 'A', 1038, '2024-10-30', 'hayathnagar@vijayadiagnostic.in'),
+('151', 'Vasavinagar-151', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '107943', '2024-03-15', '151', '2024-10-04', 'A', 1041, '2024-11-03', 'vasavinagar@vijayadiagnostic.in'),
+('152', 'Chaderghat', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-09-30', '152', '2024-09-05', 'A', 1036, '2024-10-05', 'chaderghat@vijayadiagnostic.in'),
+('154', 'Ongole', '979e7ac99fefae6599369374ac2f8646', 'N', 'USER', 'N', '106475', '2024-08-09', '154', '2024-09-20', 'A', 1042, '2024-10-20', 'ongole@vijayadiagnostic.in'),
+('155', 'bahadurpura', '9b8af692f6253e235a280aec2b84987a', 'N', 'USER', 'N', '107655', '2024-07-06', '155', '2024-09-20', 'A', 1043, '2024-10-20', 'bahadurpura@vijayadiagnostic.in'),
+('17', 'Habsiguda - 17', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '17', '2024-09-06', 'A', 998, '2024-10-06', 'habsiguda@vijayadiagnostic.in'),
+('18', 'A S Rao Nagar - 18', '5b8da9a3a48a4dc77f90bf924f7e8bbd', 'N', 'USER', 'N', '105798', '2023-06-08', '18', '2024-09-20', 'A', 18, '2024-10-20', 'asraonagar@vijayadiagnostic.in'),
+('19', 'Motinagar - 19', '52da8a2665addf1f55057f9808eb425e', 'N', 'USER', 'N', '105798', '2023-06-08', '19', '2024-09-30', 'A', 19, '2024-10-30', 'motinagar@vijayadiagnostic.in'),
+('20', 'Kukatpally', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-07', '20', '2024-09-30', 'A', 20, '2024-10-30', 'kukatpally@vijayadiagnostic.in'),
+('22', 'Madina - 22', 'd2669c984574ac700a624a4b87ddd481', 'N', 'USER', 'N', '105798', '2023-06-08', '22', '2024-09-24', 'A', 22, '2024-10-24', 'madina@vijayadiagnostic.in'),
+('23', 'Tolichowki - 23', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '23', '2024-09-02', 'A', 23, '2024-10-02', 'tolichowki@vijayadiagnostic.in'),
+('26', 'Suchitra - 26', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '26', '2024-09-18', 'A', 26, '2024-10-18', 'suchitra@vijayadiagnostic.in'),
+('28', 'Nizamabad - 28', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'USER', 'N', '105798', '2023-06-08', '', '0000-00-00', 'A', 28, '2023-10-06', 'nizamabad@vijayadiagnostic.in'),
+('30', 'BHEL - 30', 'c53e6e9749fccf48a3af1ab223358595', 'N', 'USER', 'N', '105798', '2023-06-08', '30', '2024-09-23', 'A', 30, '2024-10-23', 'bhel@vijayadiagnostic.in'),
+('302291', 'Tanuja', 'ee1e41146369e48b2c78dee2edac40f3', 'N', 'IT', 'N', '106475', '2024-08-20', '302291', '2024-09-20', 'A', 1033, '2024-10-20', 'tesh30@gmail.com'),
+('33', 'Vanasthalipuram - 33', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '33', '2024-08-26', 'A', 33, '2024-09-25', 'vanastalipuram@vijayadiagnostic.in'),
+('34', 'Attapur - 34', '28f701cf8fc31440e7219bbadaa69b21', 'N', 'USER', 'N', '105798', '2023-06-08', '34', '2024-09-24', 'A', 34, '2024-10-24', 'attapur@vijayadiagnostic.in'),
+('35', 'Kharkhana - 35', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '35', '2024-09-11', 'A', 35, '2024-10-11', 'kharkhana@vijayadiagnostic.in'),
+('36', 'Musheerbad - 36', '882a79aa03ab721bd38a7141b70aa22a', 'N', 'USER', 'N', '105798', '2023-06-08', '36', '2024-09-27', 'A', 36, '2024-10-27', 'musheerabad@vijayadiagnostic.in'),
+('37', 'Vizag - 37', 'ce6687f3494c50235fcb63f8461bb577', 'N', 'USER', 'N', '105798', '2023-06-08', '37', '2024-09-24', 'A', 37, '2024-10-24', 'vizag.reception@vijayadiagnostic.in'),
+('38', 'Film Nagar - 38', 'ad182dcd58447eeab3f90ebc7e3eac55', 'N', 'USER', 'N', '105798', '2023-06-08', '38', '2024-09-21', 'A', 38, '2024-10-21', 'filmnagar@vijayadiagnostic.in'),
+('40', 'Hanamkonda - 40', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '40', '2024-09-05', 'A', 40, '2024-10-05', 'hanamkonda@vijayadiagnostic.in'),
+('400528', 'Dr. Tejaswini Reddy', 'e0e5b325c883482f741f02657da81a56', 'N', 'LAB', 'N', '106475', '2023-11-21', '', '0000-00-00', 'A', 10, '2023-12-21', 'dr.tejaswinireddy@vijayadiagnostic.in'),
+('41', 'Warangal - 41', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '41', '2024-09-01', 'A', 41, '2024-10-01', 'warangal@vijayadiagnostic.in'),
+('42', 'Yousufguda - 42', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '42', '2024-09-22', 'A', 42, '2024-10-22', 'yousufguda@vijayadiagnostic.in'),
+('43', 'Kurnool - 43', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '43', '2024-09-11', 'A', 43, '2024-10-11', 'kurnool@vijayadiagnostic.in'),
+('44', 'Alwal - 44', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '44', '2024-09-03', 'A', 44, '2024-10-03', 'alwal@vijayadiagnostic.in'),
+('45', 'Boduppal - 45', '357a4f83a06782b7b950eb95ce12d571', 'N', 'USER', 'N', '105798', '2023-06-08', '45', '2024-09-20', 'A', 45, '2024-10-20', 'boduppal@vijayadiagnostic.in'),
+('46', 'Nizampet - 46', 'e053022799e6959d128e625f0853e182', 'N', 'USER', 'N', '105798', '2023-06-08', '46', '2024-10-04', 'A', 46, '2024-11-03', 'nizampet@vijayadiagnostic.in'),
+('48', 'Nandyal - 48', '4f940af899ec86487ff7f84185c01801', 'N', 'USER', 'N', '105798', '2023-06-08', '48', '2024-10-03', 'A', 48, '2024-11-02', 'nandyal@vijayadiagnostic.in'),
+('49', 'Gopalapatnam - 49', '5c800caba91a0cd8aefc4fa0559055a6', 'N', 'USER', 'N', '105798', '2023-06-08', '49', '2024-09-24', 'A', 49, '2024-10-24', 'gopalapatnam@vijayadiagnostic.in'),
+('51', 'Vijayanagar - 51', '6ad3e3374612dbbe53b6624c5baa32ca', 'N', 'USER', 'N', '105798', '2023-07-03', '51', '2024-09-28', 'A', 51, '2024-10-28', 'vijayanagarcolony@vijayadiagnostic.in'),
+('54', 'Gurgaon - 54', '982e9f97b121e48338e4a60aeb260d97', 'N', 'USER', 'N', '105798', '2023-06-08', '54', '2024-09-06', 'A', 54, '2024-10-06', 'gurgaon@vijayadiagnostic.in'),
+('58', 'Safilguda - 58', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-08', '58', '2024-09-28', 'A', 58, '2024-10-28', 'safilguda@vijayadiagnostic.in'),
+('59', 'Manikonda - 59', 'a2ab996e09fbf24ff5c60c72081320a3', 'N', 'USER', 'N', '105798', '2023-06-08', '59', '2024-09-20', 'A', 59, '2024-10-20', 'manikonda@vijayadiagnostic.in'),
+('60', 'Bandlaguda-60', '72a06624cb2ac432c586d516e9a909ad', 'N', 'USER', 'N', '105798', '2023-06-08', '60', '2024-09-05', 'A', 60, '2024-10-05', 'bandlaguda@vijayadiagnostic.in'),
+('61', 'Corporate-Panjagutta', '476274cb38bae3859ad847273d59a705', 'N', 'USER', 'N', '105798', '2023-06-30', '61', '2024-03-16', 'A', 1033, '2024-04-15', ''),
+('62', 'Chintal - 62', '4cfbbff3474416860b971e4f71c42461', 'N', 'USER', 'N', '105798', '2023-06-08', '62', '2024-09-02', 'A', 62, '2024-10-02', 'chintal@vijayadiagnostic.in'),
+('63', 'Balapur - 63', 'fa0e0af5115a1c5dffb77d743a4121d9', 'N', 'USER', 'N', '105798', '2023-06-08', '63', '2024-09-20', 'A', 63, '2024-10-20', 'balapur@vijayadiagnostic.in'),
+('64', 'Hyderguda-Attapur-64', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '64', '2024-08-24', 'A', 64, '2024-09-23', 'hyderguda.attapur@vijayadiagnostic.in'),
+('65', 'Kompally - 65', '03a5f861c1ba384b8c47eda9e7caf0c1', 'N', 'USER', 'N', '105798', '2023-06-08', '65', '2024-09-19', 'A', 65, '2024-10-19', 'kompally@vijayadiagnostic.in'),
+('66', 'Gachibowli-66', 'a0337f913ccfc105296dcbfb55eb93da', 'N', 'USER', 'N', '105798', '2023-06-08', '66', '2024-09-26', 'A', 66, '2024-10-26', 'gachibowli@vijayadiagnostic.in'),
+('67', 'Nallakunta - 67', 'ecaca2b73facec7ab4f0e5a609574413', 'N', 'USER', 'N', '105798', '2023-06-08', '67', '2024-09-30', 'A', 67, '2024-10-30', 'nallakunta@vijayadiagnostic.in'),
+('68', 'Karmanghat - 68', '5313e91f8c69eb6d1e3d521f2d8e59d9', 'N', 'USER', 'N', '105798', '2023-06-08', '68', '2024-10-04', 'A', 68, '2024-11-03', 'Karmanghat@vijayadiagnostic.in'),
+('69', 'Uppal - 69', '503c57b251ed0314d2a41f80e948bf8c', 'N', 'USER', 'N', '105798', '2023-06-08', '69', '2024-09-28', 'A', 69, '2024-10-28', 'uppal@vijayadiagnostic.in'),
+('70', 'Madhapur-2 - 70', 'adc280d7047528714b502bea6cafbc33', 'N', 'USER', 'N', '105798', '2023-06-08', '70', '2024-09-28', 'A', 70, '2024-10-28', 'madhapur@vijayadiagnostic.in'),
+('71', 'Chandrayanagutta - 71', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '71', '2024-10-04', 'A', 71, '2024-11-03', 'chandrayangutta@vijayadiagnostic.in'),
+('72', 'P G Road - 72', '9fdfc7add63205493a95676107b8e534', 'N', 'USER', 'N', '105798', '2023-06-08', '72', '2024-10-01', 'A', 72, '2024-10-31', 'pgroad@vijayadiagnostic.in'),
+('73', 'NGO Colony - 73', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-08', '73', '2024-01-29', 'A', 73, '2024-02-28', 'ngocolony@vijayadiagnostic.in'),
+('74', 'Botanical Garden-74', 'd02f1fa1519901311203dc943c4e3a44', 'N', 'USER', 'N', '105798', '2023-06-08', '74', '2024-09-12', 'A', 74, '2024-10-12', 'botanicalgarden@vijayadiagnostic.in'),
+('75', 'Karimnagar - 75', '85bf07f79fb77c8228b480190e1648e6', 'N', 'USER', 'N', '105798', '2023-06-08', '75', '2024-09-07', 'A', 75, '2024-10-07', 'karimnagar@vijayadiagnostic.in'),
+('76', 'Seethaphalmandi - 76', 'a0337f913ccfc105296dcbfb55eb93da', 'N', 'USER', 'N', '105798', '2023-06-08', '76', '2024-09-05', 'A', 76, '2024-10-05', 'seethaphalmandi@vijayadiagnostic.in'),
+('77', 'KPHB-Malaysian - 77', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '77', '2024-10-03', 'A', 77, '2024-11-02', 'malaysiantownship@vijayadiagnostic.in'),
+('78', 'Shamshabad - 78', 'e7f5f578f6af7833c003ca39eb5c3d3d', 'N', 'USER', 'N', '105798', '2023-06-08', '78', '2023-12-04', 'A', 78, '2024-01-03', 'shamshabad@vijayadiagnostic.in'),
+('79', 'Gandhinagar - 79', 'abdefb854d7e934a64b5b8a6ad211b49', 'N', 'USER', 'N', '105798', '2023-06-08', '79', '2024-09-28', 'A', 79, '2024-10-28', 'gandhinagar@vijayadiagnostic.in'),
+('80', 'NR Pet 1-KRNL - 80', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '80', '2024-09-20', 'A', 80, '2024-10-20', 'nrpet1@vijayadiagnostic.in'),
+('81', 'VR Colony-Krnl - 81', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '81', '2024-09-27', 'A', 81, '2024-10-27', 'vrcolony@vijayadiagnostic.in'),
+('82', 'Dammaiguda - 82', 'f25b80604450f50dc8834d97c4301ecb', 'N', 'USER', 'N', '105798', '2023-06-08', '82', '2024-09-20', 'A', 82, '2024-10-20', 'dammaiguda@vijayadiagnostic.in'),
+('83', 'Suncity - 83', '9823a6a2999ee45a5d63bce6c492438e', 'N', 'USER', 'N', '105798', '2023-06-08', '83', '2024-09-12', 'A', 83, '2024-10-12', 'suncity@vijayadiagnostic.in'),
+('84', 'Nallagandla - 84', '398ceac880f0a3d75c9bd6a85a9d9c41', 'N', 'USER', 'N', '105798', '2023-06-08', '84', '2024-09-02', 'A', 84, '2024-10-02', 'nallagandla@vijayadiagnostic.in'),
+('85', 'Shah-Ali-Banda - 85', '3adb7928c567574e78753b3352bbf62e', 'N', 'USER', 'N', '105798', '2023-06-08', '85', '2024-09-04', 'A', 85, '2024-10-04', 'shalibanda@vijayadiagnostic.in'),
+('851', 'Vijayanagar - 51', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'USER', 'N', '105798', '2023-06-08', '', '0000-00-00', 'A', 51, '2023-10-06', 'vijayanagarcolony@vijayadiagnostic.in'),
+('86', 'Moula-Ali - 86', 'f89bb72401e5a32c72ead423afc7dc52', 'N', 'USER', 'N', '105798', '2023-06-08', '86', '2024-09-30', 'A', 86, '2024-10-30', 'moulali@vijayadiagnostic.in'),
+('87', 'LBNAGAR - 87', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '87', '2024-09-23', 'A', 87, '2024-10-23', 'lbnagar@vijayadiagnostic.in'),
+('88', 'Yapral - 88', '73931d5778b21dee01f946d1837a6a45', 'N', 'USER', 'N', '105798', '2023-06-08', '88', '2024-09-26', 'A', 88, '2024-10-26', 'yapral@vijayadiagnostic.in'),
+('89', 'Pragathi Nagar-89', 'a0337f913ccfc105296dcbfb55eb93da', 'N', 'USER', 'N', '105798', '2023-06-08', '89', '2024-09-29', 'A', 89, '2024-10-29', 'pragathinagar@vijayadiagnostic.in'),
+('90', 'Lothkunta-90', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '90', '2024-09-03', 'A', 90, '2024-10-03', 'lothukunta@vijayadiagnostic.in'),
+('91', 'Kolkate VIP Road -91', 'c53e6e9749fccf48a3af1ab223358595', 'N', 'USER', 'N', '107943', '2023-11-16', '91', '2024-09-13', 'A', 1040, '2024-10-13', 'kolkata@vijayadiagnostic.in'),
+('92', 'Prakashnagar-92', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'USER', 'N', '105798', '2023-06-08', '', '0000-00-00', 'I', 92, '2023-10-06', ''),
+('93', 'Old Bowenpally - 93', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '93', '2024-09-28', 'A', 93, '2024-10-28', 'oldbowenpally@vijayadiagnostic.in'),
+('94', 'Mankammathota - 94', 'af3d713a96f3a411a91c55b4993c0654', 'N', 'USER', 'N', '105798', '2023-06-08', '94', '2023-11-25', 'A', 94, '2023-12-25', 'mankammathota@vijayadiagnostic.in'),
+('95', 'NEREDMET-95', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '95', '2024-08-21', 'A', 95, '2024-09-20', 'neredmet@vijayadiagnostic.in'),
+('97', 'Mansoorabad - 97', '72a06624cb2ac432c586d516e9a909ad', 'N', 'USER', 'N', '105798', '2023-06-08', '97', '2024-08-27', 'A', 97, '2024-09-26', 'mansoorabad@vijayadiagnostic.in'),
+('98', 'Moosapet - 98', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '105798', '2023-06-08', '98', '2024-10-02', 'A', 98, '2024-11-01', 'moosapet@vijayadiagnostic.in'),
+('ameerpet', 'Ameerpet', '6a1b2de69eeb9a037ea23de6b529394d', 'N', 'USER', 'N', '106475', '2023-05-22', '', '0000-00-00', 'A', 14, '2023-10-06', 'ameerpet@vijayadiagnostic.in'),
+('C05', 'Himayathnagar(Office)-C05', '11f50e09e7fcecc70eae6e553b48e65e', 'N', 'USER', 'N', '105798', '2023-06-08', 'C05', '2023-12-27', 'A', 1032, '2024-01-26', 'hmnr.frontoffice@vijayadiagnostic.in'),
+('cc1', 'cc1', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2024-05-31', '', '0000-00-00', 'A', 14, '2024-06-30', 'cc1@vijayadiagnostic.in'),
+('cc2', 'cc2', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2024-05-31', '', '0000-00-00', 'A', 14, '2024-06-30', 'cc2@vijayadiagnostic.in'),
+('cc3', 'cc3', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2024-05-31', '', '0000-00-00', 'A', 14, '2024-06-30', 'cc3@vijayadiagnostic.in'),
+('cc4', 'cc4', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2024-05-31', '', '0000-00-00', 'A', 14, '2024-06-30', 'cc4@vijayadiagnostic.in'),
+('cc5', 'cc5', 'e0e5b325c883482f741f02657da81a56', 'N', 'USER', 'N', '106475', '2024-05-31', '', '0000-00-00', 'A', 14, '2024-06-30', 'cc5@vijayadiagnostic.in'),
+('IT', 'IT', 'c53e6e9749fccf48a3af1ab223358595', 'N', 'IT', 'N', '106475', '2023-10-30', '106475', '2024-10-14', 'A', 1019, '2025-01-12', 'it@vijayadiagnostic.in'),
+('test', 'VAPT TESTING', '2f907cd51f597fa180207cb41df27ca3', 'N', 'USER', 'N', '106475', '2023-09-29', 'test', '2023-10-23', 'A', 1033, '2023-11-22', '');
+
+--
+-- Indexes for dumped tables
+--
+
+--
+-- Indexes for table `users`
+--
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`USER-ID`);
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
