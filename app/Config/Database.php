@@ -1,6 +1,9 @@
 <?php
+
 namespace Config;
+
 use CodeIgniter\Database\Config;
+
 /**
  * Database Configuration
  */
@@ -23,14 +26,20 @@ class Database extends Config
           // Get the environment variable (development, production, etc.)
           $environment = ENVIRONMENT;
           if ($environment === 'development') {
-               // Default database group
+               // Helper to safely read environment variables with defaults
+               $e = function ($name, $default = '') {
+                    $val = getenv($name);
+                    return $val !== false ? $val : $default;
+               };
+
+               // Default database group with safe fallbacks
                $this->default = [
                     'DSN'      => '',
-                    'hostname' => getenv('database.default.hostname'),
-                    'username' => getenv('database.default.username'),
-                    'password' => getenv('database.default.password'),
-                    'database' => getenv('database.default.database'),
-                    'DBDriver' => getenv('database.default.DBDriver'),
+                    'hostname' => $e('database.default.hostname', '127.0.0.1'),
+                    'username' => $e('database.default.username', 'root'),
+                    'password' => $e('database.default.password', ''),
+                    'database' => $e('database.default.database', ''),
+                    'DBDriver' => $e('database.default.DBDriver', 'MySQLi'),
                     'DBPrefix' => '',
                     'pConnect' => false,
                     'DBDebug'  => true,
@@ -41,16 +50,17 @@ class Database extends Config
                     'compress' => false,
                     'strictOn' => false,
                     'failover' => [],
-                    'port'     => (int) getenv('database.default.port'),
+                    'port'     => (int) $e('database.default.port', 3306),
                ];
-               // ➕ Secondary database group
+
+               // ➕ Secondary database group with safe fallbacks
                $this->secondary = [
                     'DSN'      => '',
-                    'hostname' => getenv('database.secondary.hostname'),
-                    'username' => getenv('database.secondary.username'),
-                    'password' => getenv('database.secondary.password'),
-                    'database' => getenv('database.secondary.database'),
-                    'DBDriver' => getenv('database.secondary.DBDriver'),
+                    'hostname' => $e('database.secondary.hostname', '127.0.0.1'),
+                    'username' => $e('database.secondary.username', 'root'),
+                    'password' => $e('database.secondary.password', ''),
+                    'database' => $e('database.secondary.database', ''),
+                    'DBDriver' => $e('database.secondary.DBDriver', 'MySQLi'),
                     'DBPrefix' => '',
                     'pConnect' => true,
                     'DBDebug'  => true,
@@ -61,7 +71,7 @@ class Database extends Config
                     'compress' => false,
                     'strictOn' => false,
                     'failover' => [],
-                    'port'     => (int) getenv('database.secondary.port'),
+                    'port'     => (int) $e('database.secondary.port', 3306),
                ];
           }
           // You can add more logic for production or other environments here

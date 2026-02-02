@@ -73,13 +73,15 @@ abstract class BaseController extends Controller
      //      }
      // }
 
-     protected function validateAuthorization()
+     protected function validateAuthorizationNew()
      {
 
           if (!class_exists('App\\Services\\JwtService')) {
                return $this->response->setJSON(['error' => 'JwtService class not found'])->setStatusCode(500);
           }
-          $authorizationHeader = $this->request->header('Authorization')?->getValue();
+          // Avoid nullsafe operator (PHP <8.0) to prevent T_OBJECT_OPERATOR parse errors.
+          $authHeaderObj = $this->request->header('Authorization');
+          $authorizationHeader = $authHeaderObj ? $authHeaderObj->getValue() : null;
           $jwtService = new JwtService();
           $result = $jwtService->validateToken($authorizationHeader);
 
@@ -87,26 +89,5 @@ abstract class BaseController extends Controller
                return $this->response->setJSON(['error' => $result['error']])->setStatusCode($result['status'] ?? 401);
           }
           return $result['data'];
-     }
-
-     protected function validateAuthorization2()
-     {
-          if (!class_exists('App\\Services\\JwtService')) {
-               // Throw an exception if JwtService is not found
-               throw new \RuntimeException('JwtService class not found');
-          }
-
-          $authorizationHeader = $this->request->header('Authorization')?->getValue();
-          $jwtService = new JwtService();
-          $result = $jwtService->validateToken($authorizationHeader);
-
-          if (isset($result['error'])) {
-               // Log the error and return null if the token is invalid
-               log_message('error', 'Authorization failed: ' . $result['error']);
-               return null;
-          }
-
-          // Return the decoded token data
-          return $result['data'] ?? null;
      }
 }

@@ -222,6 +222,34 @@ class User extends BaseController
                ], 500);
           }
      }
+
+     public function getUserwiseBranchClusterZoneList()
+     {
+          $userDetails = $this->validateAuthorization();
+          $user = $userDetails->emp_code;
+          $role = $userDetails->role;
+          $users = new UserModel();
+
+          $zone_id = $this->request->getPost('zone_id');
+
+          // $clusterList = $users->getZoneClusterList($zone_id);
+
+          $clusterList = $users->getUserwiseBranchClusterZoneList($user, $role);
+
+          if ($clusterList) {
+               return $this->respond([
+                    'STATUS' => true,
+                    'message' => 'User Cluster list.',
+                    'data' => $clusterList
+               ], 200);
+          } else {
+               log_message('error', 'Failed to give users cluster list ' . json_encode($clusterList));
+               return $this->respond([
+                    'STATUS' => false,
+                    'message' => 'Failed.' . $user
+               ], 500);
+          }
+     }
      public function getUserBranchClusterZoneList()
      {
           $userDetails = $this->validateAuthorization();
@@ -288,18 +316,16 @@ class User extends BaseController
      public function getClusterBranchList()
      {
           $userDetails = $this->validateAuthorization();
-          log_message('error', 'User Details: ' . json_encode($userDetails));  // Log user details for debugging
+          log_message('error', 'User Details: ' . json_encode($userDetails));
 
           $user = $userDetails->emp_code;
-          $role = $userDetails->role;
           $users = new UserModel();
 
-          // Corrected the parameter name to 'cluster_id'
           $cluster_id = $this->request->getPost('cluster_id');
-          log_message('error', 'Cluster ID: ' . $cluster_id);  // Log the cluster_id to confirm it's received correctly
+          log_message('error', 'Cluster ID: ' . $cluster_id);
 
           $branchList = $users->getClusterBranchList($cluster_id);
-          log_message('error', 'Branch List: ' . json_encode($branchList));  // Log the result of the query
+          log_message('error', 'Branch List: ' . json_encode($branchList));
 
           if ($branchList) {
                return $this->respond([
@@ -311,7 +337,7 @@ class User extends BaseController
                log_message('error', 'Failed to give users cluster list ' . json_encode($branchList));
                return $this->respond([
                     'STATUS' => false,
-                    'message' => 'Failed.' . $user
+                    'message' => 'Failed: ' . $user
                ], 500);
           }
      }
@@ -756,7 +782,6 @@ class User extends BaseController
 
 
 
-
      public function getUsersList()
      {
           // Get Authorization header
@@ -794,15 +819,205 @@ class User extends BaseController
           // Extract emp_codes
           $empCodes = array_column($employees, 'emp_code');
 
-          // Get branches mapped to these employees
-          $branchLists = $db->table('branchesmapped as bm')
-               ->select('bm.emp_code, bm.branch_id, b.branch, bm.cluster_id, c.cluster, bm.zone_id, z.zone')
-               ->join('branches as b', 'bm.branch_id = b.branch_id', 'left')
-               ->join('clusters as c', 'c.cluster_id = bm.cluster_id', 'left')
-               ->join('zones as z', 'z.z_id = bm.zone_id', 'left')
-               ->whereIn('bm.emp_code', $empCodes)
-               ->get()
-               ->getResultArray();
+          // Get branches mapped to these employees (branchesmapped in default DB, branch details in secondary DB)
+          try {
+               $secondaryDBName = $db2->database ?? getenv('database.secondary.database');
+               $branchesTable = $secondaryDBName ? $secondaryDBName . '.branches' : 'branches';
+
+               // Prefer clusters and zones from default DB; fallback to secondary if missing
+               $clustersTable = 'clusters';
+               $zonesTable = 'zones';
+               try {
+                    // check clusters exists in default
+                    $db->table($clustersTable)->limit(1)->get();
+               } catch (\Exception $e) {
+                    if ($secondaryDBName) {
+                         $clustersTable = $secondaryDBName . '.clusters';
+                    }
+               }
+               try {
+                    $db->table($zonesTable)->limit(1)->get();
+               } catch (\Exception $e) {
+                    if ($secondaryDBName) {
+                         $zonesTable = $secondaryDBName . '.zones';
+                    }
+               }
+
+               // Detect branch name column in the secondary branches table and build select dynamically
+               $branchNameCol = 'branch';
+               try {
+                    $colRes = $db2->query("SHOW COLUMNS FROM {$branchesTable}")->getResultArray();
+                    $colNames = array_column($colRes, 'Field');
+                    foreach (['branch', 'branch_name', 'name', 'branch_title', 'branchname'] as $cname) {
+                         if (in_array($cname, $colNames, true)) {
+                              $branchNameCol = $cname;
+                              break;
+                         }
+                    }
+                    // Prefer any column that contains 'branch' (case-insensitive)
+                    if ($branchNameCol === 'branch') {
+                         foreach ($colNames as $cn) {
+                              if (stripos($cn, 'branch') !== false) {
+                                   $branchNameCol = $cn;
+                                   break;
+                              }
+                         }
+                    }
+                    // Fallback: pick first non-id varchar/text column
+                    if ($branchNameCol === 'branch') {
+                         foreach ($colRes as $cinfo) {
+                              $f = $cinfo['Field'];
+                              $t = strtolower($cinfo['Type']);
+                              if (in_array($f, ['branch_id', 'id', 'created_at', 'updated_at', 'deleted_at'], true)) {
+                                   continue;
+                              }
+                              if (strpos($t, 'char') !== false || strpos($t, 'text') !== false || strpos($t, 'varchar') !== false) {
+                                   $branchNameCol = $f;
+                                   break;
+                              }
+                         }
+                    }
+                    log_message('debug', "Detected branch name column '{$branchNameCol}' in '{$branchesTable}'");
+               } catch (\Exception $e) {
+                    // keep default
+                    log_message('debug', "Failed to detect branch name column in '{$branchesTable}': " . $e->getMessage());
+               }
+
+               // If the detected column doesn't exist in the columns list, omit the branch column to avoid SQL errors
+               $includeBranch = true;
+               if (!empty($colNames) && !in_array($branchNameCol, $colNames, true)) {
+                    $includeBranch = false;
+                    $branchSelect = "bm.emp_code, bm.branch_id, bm.cluster_id, c.cluster, bm.zone_id, z.zone";
+                    log_message('warning', "Branch column '{$branchNameCol}' not found in '{$branchesTable}', omitting branch from select.");
+               } else {
+                    $branchSelect = "bm.emp_code, bm.branch_id, b.`{$branchNameCol}` as branch, bm.cluster_id, c.cluster, bm.zone_id, z.zone";
+               }
+
+               // Build query builder and conditionally join branches table using a detected branch-id column
+               $builder = $db->table('branchesmapped as bm')->select($branchSelect);
+
+               if ($includeBranch) {
+                    // detect branch id column to use in join
+                    $branchIdCol = 'branch_id';
+                    if (!empty($colNames)) {
+                         if (in_array('branch_id', $colNames, true)) {
+                              $branchIdCol = 'branch_id';
+                         } elseif (in_array('id', $colNames, true)) {
+                              $branchIdCol = 'id';
+                         } else {
+                              foreach ($colNames as $cn) {
+                                   if (preg_match('/_id$/i', $cn) || stripos($cn, 'branchid') !== false) {
+                                        $branchIdCol = $cn;
+                                        break;
+                                   }
+                              }
+                         }
+                    }
+                    if (empty($colNames) || !in_array($branchIdCol, $colNames, true)) {
+                         log_message('warning', "Branch id column '{$branchIdCol}' not present in '{$branchesTable}', skipping branches join.");
+                    } else {
+                         $builder->join($branchesTable . ' as b', 'bm.branch_id = b.' . $branchIdCol, 'left');
+                    }
+               } else {
+                    log_message('debug', "Skipping branches join because branch name column not available in '{$branchesTable}'.");
+               }
+
+               $builder->join($clustersTable . ' as c', 'c.cluster_id = bm.cluster_id', 'left')
+                    ->join($zonesTable . ' as z', 'z.z_id = bm.zone_id', 'left')
+                    ->whereIn('bm.emp_code', $empCodes);
+
+               $branchLists = $builder->get()->getResultArray();
+
+               // Ensure every branch row has a 'branch' key (avoid missing key downstream)
+               if (is_array($branchLists)) {
+                    foreach ($branchLists as &$brow) {
+                         if (!array_key_exists('branch', $brow) || $brow['branch'] === null) {
+                              $brow['branch'] = '';
+                         }
+                    }
+                    unset($brow);
+               }
+          } catch (\Exception $e) {
+               log_message('error', 'Failed to fetch branches using secondary for branch details: ' . $e->getMessage());
+               // Fallback to using local tables only - detect local branch column
+               $localBranchNameCol = 'branch';
+               try {
+                    $colResLocal = $db->query("SHOW COLUMNS FROM branches")->getResultArray();
+                    $colNamesLocal = array_column($colResLocal, 'Field');
+                    foreach (['branch', 'branch_name', 'name', 'branch_title', 'branchname'] as $cname) {
+                         if (in_array($cname, $colNamesLocal, true)) {
+                              $localBranchNameCol = $cname;
+                              break;
+                         }
+                    }
+                    if ($localBranchNameCol === 'branch') {
+                         foreach ($colNamesLocal as $cn) {
+                              if (stripos($cn, 'branch') !== false) {
+                                   $localBranchNameCol = $cn;
+                                   break;
+                              }
+                         }
+                    }
+                    if ($localBranchNameCol === 'branch') {
+                         foreach ($colResLocal as $cinfo) {
+                              $f = $cinfo['Field'];
+                              $t = strtolower($cinfo['Type']);
+                              if (in_array($f, ['branch_id', 'id', 'created_at', 'updated_at', 'deleted_at'], true)) {
+                                   continue;
+                              }
+                              if (strpos($t, 'char') !== false || strpos($t, 'text') !== false || strpos($t, 'varchar') !== false) {
+                                   $localBranchNameCol = $f;
+                                   break;
+                              }
+                         }
+                    }
+                    log_message('debug', "Detected local branch name column '{$localBranchNameCol}' in 'branches'");
+               } catch (\Exception $e2) {
+                    log_message('debug', "Failed to detect local branch name column: " . $e2->getMessage());
+               }
+
+               $localBranchSelect = "bm.emp_code, bm.branch_id, b.`{$localBranchNameCol}` as branch, bm.cluster_id, c.cluster, bm.zone_id, z.zone";
+
+               // Build local query and conditionally join branches using detected local id column
+               $builder = $db->table('branchesmapped as bm')->select($localBranchSelect);
+               $localBranchIdCol = 'branch_id';
+               if (!empty($colNamesLocal)) {
+                    if (in_array('branch_id', $colNamesLocal, true)) {
+                         $localBranchIdCol = 'branch_id';
+                    } elseif (in_array('id', $colNamesLocal, true)) {
+                         $localBranchIdCol = 'id';
+                    } else {
+                         foreach ($colNamesLocal as $cn) {
+                              if (preg_match('/_id$/i', $cn) || stripos($cn, 'branchid') !== false) {
+                                   $localBranchIdCol = $cn;
+                                   break;
+                              }
+                         }
+                    }
+               }
+
+               if (empty($colNamesLocal) || !in_array($localBranchIdCol, $colNamesLocal, true)) {
+                    log_message('warning', "Local branch id column '{$localBranchIdCol}' not present in 'branches', skipping join.");
+               } else {
+                    $builder->join('branches as b', 'bm.branch_id = b.' . $localBranchIdCol, 'left');
+               }
+
+               $builder->join('clusters as c', 'c.cluster_id = bm.cluster_id', 'left')
+                    ->join('zones as z', 'z.z_id = bm.zone_id', 'left')
+                    ->whereIn('bm.emp_code', $empCodes);
+
+               $branchLists = $builder->get()->getResultArray();
+
+               // Ensure every branch row has a 'branch' key (avoid missing key downstream)
+               if (is_array($branchLists)) {
+                    foreach ($branchLists as &$brow) {
+                         if (!array_key_exists('branch', $brow) || $brow['branch'] === null) {
+                              $brow['branch'] = '';
+                         }
+                    }
+                    unset($brow);
+               }
+          }
 
           // Group branches by emp_code
           $branchesByEmpCode = [];
@@ -1237,7 +1452,7 @@ class User extends BaseController
           }
      }
 
-     protected function validateAuthorization()
+     private function validateAuthorization()
      {
           if (!class_exists('App\Services\JwtService')) {
                log_message('error', 'JwtService class not found');
@@ -1363,15 +1578,165 @@ class User extends BaseController
           // Extract emp_codes
           $empCodes = array_column($employees, 'emp_code');
 
-          // Get branches mapped to these employees
-          $branchLists = $db->table('branchesmapped as bm')
-               ->select('bm.emp_code, bm.branch_id, b.branch, bm.cluster_id, c.cluster, bm.zone_id, z.zone')
-               ->join('branches as b', 'bm.branch_id = b.branch_id', 'left')
-               ->join('clusters as c', 'c.cluster_id = bm.cluster_id', 'left')
-               ->join('zones as z', 'z.z_id = bm.zone_id', 'left')
-               ->whereIn('bm.emp_code', $empCodes)
-               ->get()
-               ->getResultArray();
+          // Get branches mapped to these employees (branchesmapped in default DB, branch details in secondary DB)
+          try {
+               $secondaryDBName = $db2->database ?? getenv('database.secondary.database');
+               $branchesTable = $secondaryDBName ? $secondaryDBName . '.branches' : 'branches';
+
+               // Prefer clusters and zones from default DB; fallback to secondary if missing
+               $clustersTable = 'clusters';
+               $zonesTable = 'zones';
+               try {
+                    // check clusters exists in default
+                    $db->table($clustersTable)->limit(1)->get();
+               } catch (\Exception $e) {
+                    if ($secondaryDBName) {
+                         $clustersTable = $secondaryDBName . '.clusters';
+                    }
+               }
+               try {
+                    $db->table($zonesTable)->limit(1)->get();
+               } catch (\Exception $e) {
+                    if ($secondaryDBName) {
+                         $zonesTable = $secondaryDBName . '.zones';
+                    }
+               }
+
+               // Detect branch name column in the branches table (secondary or qualified) and build select dynamically
+               $branchNameCol = 'branch';
+               try {
+                    $colRes = $db2->query("SHOW COLUMNS FROM {$branchesTable}")->getResultArray();
+                    $colNames = array_column($colRes, 'Field');
+                    foreach (['branch', 'branch_name', 'name', 'branch_title', 'branchname'] as $cname) {
+                         if (in_array($cname, $colNames, true)) {
+                              $branchNameCol = $cname;
+                              break;
+                         }
+                    }
+                    // Prefer any column that contains 'branch' (case-insensitive)
+                    if ($branchNameCol === 'branch') {
+                         foreach ($colNames as $cn) {
+                              if (stripos($cn, 'branch') !== false) {
+                                   $branchNameCol = $cn;
+                                   break;
+                              }
+                         }
+                    }
+                    // Fallback: pick first non-id varchar/text column
+                    if ($branchNameCol === 'branch') {
+                         foreach ($colRes as $cinfo) {
+                              $f = $cinfo['Field'];
+                              $t = strtolower($cinfo['Type']);
+                              if (in_array($f, ['branch_id', 'id', 'created_at', 'updated_at', 'deleted_at'], true)) {
+                                   continue;
+                              }
+                              if (strpos($t, 'char') !== false || strpos($t, 'text') !== false || strpos($t, 'varchar') !== false) {
+                                   $branchNameCol = $f;
+                                   break;
+                              }
+                         }
+                    }
+                    log_message('debug', "Detected branch name column '{$branchNameCol}' in '{$branchesTable}'");
+               } catch (\Exception $e) {
+                    // keep default branch
+                    log_message('debug', "Failed to detect branch name column in '{$branchesTable}': " . $e->getMessage());
+               }
+
+               // If the detected column doesn't exist in the columns list, omit the branch column to avoid SQL errors
+               $includeBranch = true;
+               if (!empty($colNames) && !in_array($branchNameCol, $colNames, true)) {
+                    $includeBranch = false;
+                    $branchSelect = "bm.emp_code, bm.branch_id, bm.cluster_id, c.cluster, bm.zone_id, z.zone";
+                    log_message('warning', "Branch column '{$branchNameCol}' not found in '{$branchesTable}', omitting branch from select.");
+               } else {
+                    $branchSelect = "bm.emp_code, bm.branch_id, b.`{$branchNameCol}` as branch, bm.cluster_id, c.cluster, bm.zone_id, z.zone";
+               }
+
+               // Build query builder and conditionally join branches table using a detected branch-id column
+               $builder = $db->table('branchesmapped as bm')->select($branchSelect);
+
+               if ($includeBranch) {
+                    // detect branch id column to use in join
+                    $branchIdCol = 'branch_id';
+                    if (!empty($colNames)) {
+                         if (in_array('branch_id', $colNames, true)) {
+                              $branchIdCol = 'branch_id';
+                         } elseif (in_array('id', $colNames, true)) {
+                              $branchIdCol = 'id';
+                         } else {
+                              foreach ($colNames as $cn) {
+                                   if (preg_match('/_id$/i', $cn) || stripos($cn, 'branchid') !== false) {
+                                        $branchIdCol = $cn;
+                                        break;
+                                   }
+                              }
+                         }
+                    }
+                    if (empty($colNames) || !in_array($branchIdCol, $colNames, true)) {
+                         log_message('warning', "Branch id column '{$branchIdCol}' not present in '{$branchesTable}', skipping branches join.");
+                    } else {
+                         $builder->join($branchesTable . ' as b', 'bm.branch_id = b.' . $branchIdCol, 'left');
+                    }
+               } else {
+                    log_message('debug', "Skipping branches join because branch name column not available in '{$branchesTable}'.");
+               }
+
+               $builder->join($clustersTable . ' as c', 'c.cluster_id = bm.cluster_id', 'left')
+                    ->join($zonesTable . ' as z', 'z.z_id = bm.zone_id', 'left')
+                    ->whereIn('bm.emp_code', $empCodes);
+
+               $branchLists = $builder->get()->getResultArray();
+          } catch (\Exception $e) {
+               log_message('error', 'Failed to fetch branches using secondary for branch details: ' . $e->getMessage());
+               // Fallback to using local tables only - detect branch column locally
+               $localBranchNameCol = 'branch';
+               try {
+                    $colResLocal = $db->query("SHOW COLUMNS FROM branches")->getResultArray();
+                    $colNamesLocal = array_column($colResLocal, 'Field');
+                    foreach (['branch', 'branch_name', 'name', 'branch_title', 'branchname'] as $cname) {
+                         if (in_array($cname, $colNamesLocal, true)) {
+                              $localBranchNameCol = $cname;
+                              break;
+                         }
+                    }
+                    log_message('debug', "Detected local branch name column '{$localBranchNameCol}' in 'branches'");
+               } catch (\Exception $e2) {
+                    // keep default
+                    log_message('debug', "Failed to detect local branch name column: " . $e2->getMessage());
+               }
+
+               $localBranchSelect = "bm.emp_code, bm.branch_id, b.`{$localBranchNameCol}` as branch, bm.cluster_id, c.cluster, bm.zone_id, z.zone";
+
+               // Build local query and conditionally join branches using detected local id column
+               $builderLocal = $db->table('branchesmapped as bm')->select($localBranchSelect);
+               $localBranchIdCol = 'branch_id';
+               if (!empty($colNamesLocal)) {
+                    if (in_array('branch_id', $colNamesLocal, true)) {
+                         $localBranchIdCol = 'branch_id';
+                    } elseif (in_array('id', $colNamesLocal, true)) {
+                         $localBranchIdCol = 'id';
+                    } else {
+                         foreach ($colNamesLocal as $cn) {
+                              if (preg_match('/_id$/i', $cn) || stripos($cn, 'branchid') !== false) {
+                                   $localBranchIdCol = $cn;
+                                   break;
+                              }
+                         }
+                    }
+               }
+
+               if (empty($colNamesLocal) || !in_array($localBranchIdCol, $colNamesLocal, true)) {
+                    log_message('warning', "Local branch id column '{$localBranchIdCol}' not present in 'branches', skipping join.");
+               } else {
+                    $builderLocal->join('branches as b', 'bm.branch_id = b.' . $localBranchIdCol, 'left');
+               }
+
+               $builderLocal->join('clusters as c', 'c.cluster_id = bm.cluster_id', 'left')
+                    ->join('zones as z', 'z.z_id = bm.zone_id', 'left')
+                    ->whereIn('bm.emp_code', $empCodes);
+
+               $branchLists = $builderLocal->get()->getResultArray();
+          }
 
           // Group branches by emp_code
           $branchesByEmpCode = [];

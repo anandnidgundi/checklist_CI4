@@ -58,7 +58,8 @@ class BM_TasksModel extends Model
           'taskDate',
           'created_by',
           'modifiedDTM',
-          'status'
+          'status',
+          'updated_by'
      ];
      //addBM_Task
      public function addBM_Task($data)
@@ -769,58 +770,58 @@ class BM_TasksModel extends Model
                ->join($defaultDB->database . '.clusters c', 'FIND_IN_SET(b.id, c.branches)', 'left');
           return $builder->get()->getResultArray();
      }
-     
 
-     
+
+
      public function getBM_TaskListForAdmin($role, $user, $selectedMonth, $selectedBranch, $selectedCluster, $selectedZone, $selectedDate, $selectedToDate, $searchText)
      {
           $db2 = \Config\Database::connect('secondary');
           $defaultDB = \Config\Database::connect('default');
-          
+
           $branchData = $this->getBranchData();
-          
+
           $empData = $db2->table('new_emp_master')->select('emp_code, fname, lname')->get()->getResultArray();
           $empMap = [];
           foreach ($empData as $emp) {
                $empMap[$emp['emp_code']] = $emp;
           }
-          
+
           $branchMap = [];
           foreach ($branchData as $branch) {
                $branchMap[$branch['id']] = $branch['SysField'];
           }
-          
+
           // Main query with joins
           $builder = $this->db->table('bm_tasks m')
                ->select('m.*, m.taskDate as mtaskDate, c.cluster_id, c.cluster, z.z_id as zone_id, z.zone')
                ->join('clusters c', 'FIND_IN_SET(m.branch, c.branches)', 'left')
                ->join('zones z', 'FIND_IN_SET(m.branch, z.branches)', 'left');
-          
+
           // Apply month filter
           if (!empty($selectedMonth) && empty($selectedDate) && empty($selectedToDate)) {
                $builder->where('DATE_FORMAT(m.taskDate, "%Y-%m")', $selectedMonth);
           }
-          
+
           // Apply branch filter
           if (!empty($selectedBranch) && $selectedBranch != '0') {
                $branchArray = is_array($selectedBranch) ? $selectedBranch : explode(',', $selectedBranch);
                $builder->whereIn('m.branch', $branchArray);
-          } 
+          }
           // Apply cluster filter when branch is 0
           elseif (!empty($selectedCluster) && $selectedCluster != '0') {
                $clusterIds = is_array($selectedCluster) ? $selectedCluster : explode(',', $selectedCluster);
                $formattedClusterIds = array_map('trim', $clusterIds);
-               
+
                log_message('error', 'Filtering by cluster IDs: ' . print_r($formattedClusterIds, true));
-               
+
                $builder->whereIn('c.cluster_id', $formattedClusterIds);
           }
-          
+
           // Apply zone filter
           if (!empty($selectedZone) && $selectedZone != '0') {
                $builder->where('z.z_id', $selectedZone);
           }
-          
+
           // Apply date filters
           if (!empty($selectedDate) && !empty($selectedToDate)) {
                $builder->where('DATE(m.taskDate) >=', date('Y-m-d', strtotime($selectedDate)));
@@ -833,30 +834,30 @@ class BM_TasksModel extends Model
                $builder->where('DATE(m.taskDate) >=', $thirtyDaysAgo);
                $builder->where('DATE(m.taskDate) <=', $today);
           }
-          
+
           $builder->orderBy('m.taskDate', 'desc');
-          
+
           // Log the query for debugging
           log_message('error', 'SQL Query: ' . $builder->getCompiledSelect(false));
-          
+
           $results = $builder->get()->getResultArray();
-          
+
           log_message('error', 'Total results found: ' . count($results));
-          
+
           // Enhance results with employee and branch data
           foreach ($results as &$task) {
                $emp = $empMap[$task['created_by']] ?? null;
                $task['fname'] = $emp['fname'] ?? '';
                $task['lname'] = $emp['lname'] ?? '';
                $task['branch_name'] = $branchMap[$task['branch']] ?? '';
-               
+
                // Ensure cluster_id and zone_id are always set
                $task['cluster_id'] = $task['cluster_id'] ?? '';
                $task['cluster'] = $task['cluster'] ?? '';
                $task['zone_id'] = $task['zone_id'] ?? '';
                $task['zone'] = $task['zone'] ?? '';
           }
-          
+
           // Apply search filter
           if (!empty($searchText)) {
                $results = array_filter($results, function ($task) use ($searchText) {
@@ -869,13 +870,13 @@ class BM_TasksModel extends Model
                          stripos($task['lname'], $searchText) !== false;
                });
           }
-          
+
           // Remove duplicates based on mid
           $results = array_values(array_reduce($results, function ($carry, $item) {
                $carry[$item['mid']] = $item;
                return $carry;
           }, []));
-          
+
           return $results;
      }
 

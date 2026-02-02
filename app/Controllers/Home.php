@@ -1256,32 +1256,32 @@ class Home extends BaseController
           }
      }
 
-     // private function validateAuthorization()
-     // {
-     //      if (!class_exists('App\Services\JwtService')) {
-     //           //log_message( 'error', 'JwtService class not found' );
-     //           return $this->respond(['error' => 'JwtService class not found'], 500);
-     //      }
-     //      // Get the Authorization header and log it
-     //      $authorizationHeader = $this->request->getHeader('Authorization') ? $this->request->getHeader('Authorization')->getValue() : null;
-     //      //log_message( 'info', 'Authorization header: ' . $authorizationHeader );
+     private function validateAuthorization()
+     {
+          if (!class_exists('App\Services\JwtService')) {
+               //log_message( 'error', 'JwtService class not found' );
+               return $this->respond(['error' => 'JwtService class not found'], 500);
+          }
+          // Get the Authorization header and log it
+          $authorizationHeader = $this->request->getHeader('Authorization') ? $this->request->getHeader('Authorization')->getValue() : null;
+          //log_message( 'info', 'Authorization header: ' . $authorizationHeader );
 
-     //      // Create an instance of JwtService and validate the token
-     //      $jwtService = new JwtService();
-     //      $result = $jwtService->validateToken($authorizationHeader);
+          // Create an instance of JwtService and validate the token
+          $jwtService = new JwtService();
+          $result = $jwtService->validateToken($authorizationHeader);
 
-     //      // Handle token validation errors
-     //      if (isset($result['error'])) {
-     //           //log_message( 'error', $result[ 'error' ] );
-     //           return $this->respond(['error' => $result['error']], $result['status']);
-     //      }
+          // Handle token validation errors
+          if (isset($result['error'])) {
+               //log_message( 'error', $result[ 'error' ] );
+               return $this->respond(['error' => $result['error']], $result['status']);
+          }
 
-     //      // Extract the decoded token and get the USER-ID
-     //      $decodedToken = $result['data'];
-     //      return $decodedToken;
-     //      // Assuming JWT contains USER-ID
+          // Extract the decoded token and get the USER-ID
+          $decodedToken = $result['data'];
+          return $decodedToken;
+          // Assuming JWT contains USER-ID
 
-     // }
+     }
 
      public function getClusters()
      {

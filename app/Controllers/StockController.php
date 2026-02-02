@@ -11,7 +11,7 @@ class StockController extends BaseController
 
      public function addOpeningStock()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           $data = $this->request->getJSON(true); // branch_id, items: [{hk_item_id, opening_qty}]
           $db = \Config\Database::connect();
           $db->transStart();
@@ -58,7 +58,7 @@ class StockController extends BaseController
 
      public function recordReceipt()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           $data = $this->request->getJSON(true); // branch_id, hk_item_id, received_qty
           $db = \Config\Database::connect();
           $db->transStart();

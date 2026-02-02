@@ -50,7 +50,7 @@ class HKRequirements extends BaseController
       */
      public function getHkMaterials()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -82,7 +82,7 @@ class HKRequirements extends BaseController
 
      // public function createHkRequirement()
      // {
-     //      $userDetails = $this->validateAuthorization();
+     //      $userDetails = $this->validateAuthorizationNew();
      //      if (!$userDetails) {
      //           return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
      //      }
@@ -268,7 +268,7 @@ class HKRequirements extends BaseController
 
      public function createHkRequirement()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -469,7 +469,7 @@ class HKRequirements extends BaseController
                     log_message('error', 'File moved successfully: ' . $uploadPath . '/' . $newFileName);
 
                     // Save file metadata in the database (extended metadata)
-                    $userDetailsForFile = $this->validateAuthorization();
+                    $userDetailsForFile = $this->validateAuthorizationNew();
                     $uploadedBy = $userDetailsForFile->emp_code ?? null;
 
                     $filesData[] = [
@@ -494,7 +494,7 @@ class HKRequirements extends BaseController
 
      public function updateHkRequirement($hkr_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -678,7 +678,7 @@ class HKRequirements extends BaseController
 
      // public function updateHkRequirement($hkr_id)
      // {
-     //      $userDetails = $this->validateAuthorization();
+     //      $userDetails = $this->validateAuthorizationNew();
      //      if (!$userDetails) {
      //           return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
      //      }
@@ -827,7 +827,7 @@ class HKRequirements extends BaseController
 
      public function getHkRequirements()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -897,7 +897,7 @@ class HKRequirements extends BaseController
       */
      // public function getHkRequirements()
      // {
-     //      $userDetails = $this->validateAuthorization();
+     //      $userDetails = $this->validateAuthorizationNew();
      //      if (!$userDetails) {
      //           return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
      //      }
@@ -956,7 +956,7 @@ class HKRequirements extends BaseController
 
      public function getHkRequirementDetails($hkr_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1003,7 +1003,7 @@ class HKRequirements extends BaseController
 
      public function getHkRequirementDetailsByMonthAndBranch()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1040,7 +1040,7 @@ class HKRequirements extends BaseController
       */
      public function updateHkRequirementStatus($hkr_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1094,7 +1094,7 @@ class HKRequirements extends BaseController
       */
      public function deleteHkRequirement($hkr_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1128,7 +1128,7 @@ class HKRequirements extends BaseController
       */
      public function getBranchBudget($branch_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1156,7 +1156,7 @@ class HKRequirements extends BaseController
       */
      public function runReconciliation()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1192,7 +1192,7 @@ class HKRequirements extends BaseController
      //     create new branch budget
      public function createBranchBudget()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1258,7 +1258,7 @@ class HKRequirements extends BaseController
      // update branch budget
      public function updateBranchBudget($branch_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1305,7 +1305,7 @@ class HKRequirements extends BaseController
      // delete branch budget
      public function deleteBranchBudget($branch_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1335,7 +1335,7 @@ class HKRequirements extends BaseController
      // get budget for all branches
      public function getAllBranchBudgets()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -1379,7 +1379,7 @@ class HKRequirements extends BaseController
       */
      public function getMyHkRequirements()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }

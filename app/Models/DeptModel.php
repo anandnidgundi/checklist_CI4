@@ -22,7 +22,7 @@ class DeptModel extends Model
                ->groupBy('a.id') // Order by descending asset id
                ->orderBy('a.id', 'desc') // Order by descending asset id
                ->findAll();
-          // Retrieve all results
+          // Retrieve all results 
      }
      public function getClusterDetailsById($cluster_id)
      {

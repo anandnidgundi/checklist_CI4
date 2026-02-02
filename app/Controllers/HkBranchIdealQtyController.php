@@ -12,7 +12,7 @@ class HkBranchIdealQtyController extends BaseController
 
      public function getByBranch($branch_id)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkBranchIdealQtyModel();
           $rows = $m->getByBranch((int)$branch_id);
           return $this->respond(['data' => $rows], 200);
@@ -20,7 +20,7 @@ class HkBranchIdealQtyController extends BaseController
 
      public function getByItem($hk_item_id)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkBranchIdealQtyModel();
           $rows = $m->getByItem((int)$hk_item_id);
           return $this->respond(['data' => $rows], 200);
@@ -28,7 +28,7 @@ class HkBranchIdealQtyController extends BaseController
 
      public function setIdealQty()
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $input = $this->request->getJSON(true) ?: [];
 
           $branch_id = isset($input['branch_id']) ? (int)$input['branch_id'] : null;
@@ -65,7 +65,7 @@ class HkBranchIdealQtyController extends BaseController
 
      public function delete($id)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkBranchIdealQtyModel();
           $existing = $m->find((int)$id);
           if (!$existing) return $this->respond(['message' => 'Not found'], 404);
@@ -81,7 +81,7 @@ class HkBranchIdealQtyController extends BaseController
      // Admin: list orphaned ideal qty records whose branch_id does not exist in branches table
      public function listOrphans()
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $db = \Config\Database::connect();
           $sql = "SELECT h.id, h.branch_id, h.hk_item_id, h.ideal_qty FROM hk_branch_ideal_qty h LEFT JOIN branches b ON b.branch_id = h.branch_id WHERE b.branch_id IS NULL";
           try {

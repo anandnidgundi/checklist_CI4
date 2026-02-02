@@ -41,9 +41,9 @@ class PowerConsumptionModel extends Model
           log_message('error', 'User Branch List: ' . json_encode($userBranchList));
 
           // Build query
+          // Build query on local DB for power consumption; employee details are in secondary DB
           $builder = $this->db->table('power_consumption pc')
-               ->select('pc.*, em.emp_code, em.comp_name, em.designation_name, em.dept_name')
-               ->join('new_emp_master em', 'em.emp_code = pc.createdBy', 'left');
+               ->select('pc.*');
 
           if (!empty($selectedMonth) && empty($selectedDate) && empty($selectedToDate)) {
                $builder->where("DATE_FORMAT(pc.consumption_date, '%Y-%m')", $selectedMonth);
@@ -68,6 +68,20 @@ class PowerConsumptionModel extends Model
 
           $results = $builder->orderBy('pc.consumption_date', 'desc')->get()->getResultArray();
 
+          // Pull employee details from secondary DB (new_emp_master) by emp_code and map them
+          $empCodes = array_unique(array_filter(array_column($results, 'createdBy')));
+          $empMap = [];
+          if (!empty($empCodes)) {
+               $empRows = $db2->table('new_emp_master')
+                    ->select('emp_code, comp_name, designation_name, dept_name')
+                    ->whereIn('emp_code', $empCodes)
+                    ->get()
+                    ->getResultArray();
+               foreach ($empRows as $er) {
+                    $empMap[$er['emp_code']] = $er;
+               }
+          }
+
           // Collect power IDs for bulk file fetching
           $powerIds = array_column($results, 'id');
           $files = [];
@@ -84,13 +98,15 @@ class PowerConsumptionModel extends Model
 
           // Attach employee, cluster, zone, branch_name, files, and ensure all string fields are not null
           foreach ($results as &$row) {
+               // Attach employee information from secondary DB (if available)
+               $empCode = $row['createdBy'] ?? '';
+               $emp = $empMap[$empCode] ?? null;
                $row['employee'] = [
-                    'emp_code' => $row['emp_code'] ?? '',
-                    'comp_name' => $row['comp_name'] ?? '',
-                    'designation_name' => $row['designation_name'] ?? '',
-                    'dept_name' => $row['dept_name'] ?? '',
+                    'emp_code' => $empCode ?? '',
+                    'comp_name' => $emp['comp_name'] ?? '',
+                    'designation_name' => $emp['designation_name'] ?? '',
+                    'dept_name' => $emp['dept_name'] ?? '',
                ];
-               unset($row['emp_code'], $row['comp_name'], $row['designation_name'], $row['dept_name']);
 
                // Cluster
                $clusterRow = $defaultDB->table('clusters')

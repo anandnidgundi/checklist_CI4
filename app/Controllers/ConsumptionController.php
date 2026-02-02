@@ -12,7 +12,7 @@ class ConsumptionController extends BaseController
      use ResponseTrait;
      public function recordCycleConsumption()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           $data = $this->request->getJSON(true);
           $db = \Config\Database::connect();
 

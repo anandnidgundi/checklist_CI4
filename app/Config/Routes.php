@@ -7,6 +7,10 @@ use CodeIgniter\Router\RouteCollection;
  */
 $routes->GET('/', 'Home::index');
 $routes->GET('viewAttachment/(:any)', 'FileUpload::viewAttachment/$1');
+$routes->GET('viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
+// Backwards-compatible routes for deployments where the CI app is under a 'backend' folder
+$routes->GET('backend/viewAttachment/(:any)', 'FileUpload::viewAttachment/$1');
+$routes->GET('backend/viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
 $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->POST("register", "Register::index");
      $routes->match(['POST', 'options'], "login", "Login::index");
@@ -317,4 +321,34 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "recordCycleConsumption", "ConsumptionController::recordCycleConsumption", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "recordCycleConsumption", "ConsumptionController::recordCycleConsumption", ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], "getCycleConsumption/(:num)/(:segment)", "ConsumptionController::getCycle/$1/$2", ['filter' => 'authFilter']);
+
+     // WhatsApp user type management
+     $routes->match(['GET', 'options'], "getWhatsappTypes", "WhatsappUsersController::index", ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], "getWhatsappType/(:num)", "WhatsappUsersController::show/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "createWhatsappType", "WhatsappUsersController::create", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "updateWhatsappType/(:num)", "WhatsappUsersController::update/$1", ['filter' => 'authFilter']);
+     $routes->match(['DELETE', 'options'], "deleteWhatsappType/(:num)", "WhatsappUsersController::delete/$1", ['filter' => 'authFilter']);
+
+     // Manage users inside types
+     $routes->match(['GET', 'options'], "getWhatsappUsersForType/(:num)", "WhatsappUsersController::getUsersForType/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "addWhatsappUserToType", "WhatsappUsersController::addUserToType", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "removeWhatsappUserFromType", "WhatsappUsersController::removeUserFromType", ['filter' => 'authFilter']);
+     $routes->match(['DELETE', 'options'], "removeWhatsappUserById/(:num)", "WhatsappUsersController::removeUserById/$1", ['filter' => 'authFilter']);
+
+     // Manage Branding routes
+
+     $routes->match(['GET', 'options'], 'branding-checklist/list', 'BrandingChecklistController::list', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branding-checklist', 'BrandingChecklistController::create', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'branding-checklist/(:num)', 'BrandingChecklistController::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branding-checklist/(:num)', 'BrandingChecklistController::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['DELETE', 'options'], 'branding-checklist/(:num)', 'BrandingChecklistController::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branding-checklist/(:num)/photos', 'BrandingChecklistController::uploadPhoto/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'branding-checklist/(:num)/photos', 'BrandingChecklistController::photos/$1', ['filter' => 'authFilter']);
+     // branch manager lookup (accept GET, POST and OPTIONS to support varied client calls)
+     $routes->match(['GET', 'POST', 'options'], 'branding-checklist/branch-manager/(:num)', 'BrandingChecklistController::branchManager/$1', ['filter' => 'authFilter']);     // employee lookup by emp_code
+     $routes->match(['GET', 'options'], 'branding-checklist/employee/(:segment)', 'BrandingChecklistController::employee/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'branding-checklist/sections', 'BrandingChecklistController::sections', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branding-checklist/sections', 'BrandingChecklistController::createSection', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'branding-checklist/subsections', 'BrandingChecklistController::subSections', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branding-checklist/subsections', 'BrandingChecklistController::createSubSection', ['filter' => 'authFilter']);
 });

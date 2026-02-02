@@ -13,7 +13,7 @@ class MonthlyIndentController extends BaseController
 
      public function create()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           $data = $this->request->getJSON(true);
           if (empty($data['branch_id']) || empty($data['month']) || empty($data['items']) || !is_array($data['items'])) {
                return $this->respond(['message' => 'Invalid payload'], 400);
@@ -115,7 +115,7 @@ class MonthlyIndentController extends BaseController
 
      public function update($id = null)
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$id) return $this->respond(['message' => 'Missing id'], 400);
           $data = $this->request->getJSON(true);
           if (empty($data['branch_id']) || empty($data['month']) || empty($data['items']) || !is_array($data['items'])) {
@@ -260,7 +260,7 @@ class MonthlyIndentController extends BaseController
 
      public function list()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           $branch_id = $this->request->getGet('branch_id');
           $month = $this->request->getGet('month');
           $status = $this->request->getGet('status');
@@ -491,7 +491,7 @@ class MonthlyIndentController extends BaseController
 
      public function approve($id = null)
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$id) return $this->respond(['message' => 'Missing id'], 400);
           $data = $this->request->getJSON(true);
           $db = \Config\Database::connect();
@@ -518,7 +518,7 @@ class MonthlyIndentController extends BaseController
 
      public function reject($id = null)
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$id) return $this->respond(['message' => 'Missing id'], 400);
 
           $data = $this->request->getJSON(true) ?? [];

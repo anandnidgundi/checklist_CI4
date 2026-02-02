@@ -18,7 +18,7 @@ class Hkmaterials extends BaseController
       */
      public function getHkMaterials()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -46,7 +46,7 @@ class Hkmaterials extends BaseController
       */
      public function getHkMaterialById($id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -81,7 +81,7 @@ class Hkmaterials extends BaseController
       */
      public function createHkMaterial()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -142,7 +142,7 @@ class Hkmaterials extends BaseController
       */
      public function updateHkMaterial($id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -213,7 +213,7 @@ class Hkmaterials extends BaseController
       */
      public function deleteHkMaterial($id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -289,7 +289,7 @@ class Hkmaterials extends BaseController
       */
      public function searchHkMaterials()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -343,4 +343,5 @@ class Hkmaterials extends BaseController
      //      return $decodedToken;
      //      // Assuming JWT contains USER-ID
      // }
+
 }

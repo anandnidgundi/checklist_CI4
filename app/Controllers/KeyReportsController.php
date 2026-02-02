@@ -57,7 +57,7 @@ class KeyReportsController extends BaseController
 
      public function branchConsumption()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$this->isAllowed($user)) return $this->respond(['message' => 'Forbidden'], 403);
 
           $month = $this->request->getGet('month'); // expected YYYY-MM
@@ -127,7 +127,7 @@ class KeyReportsController extends BaseController
 
      public function itemMonthlyConsumption()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$this->isAllowed($user)) return $this->respond(['message' => 'Forbidden'], 403);
 
           $month = $this->request->getGet('month'); // YYYY-MM
@@ -243,7 +243,7 @@ class KeyReportsController extends BaseController
 
      public function idealVsActual()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$this->isAllowed($user)) return $this->respond(['message' => 'Forbidden'], 403);
 
           $branch_id = $this->request->getGet('branch_id');
@@ -327,7 +327,7 @@ class KeyReportsController extends BaseController
 
      public function stockBalance()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$this->isAllowed($user)) return $this->respond(['message' => 'Forbidden'], 403);
 
           $branch_id = $this->request->getGet('branch_id');
@@ -376,7 +376,7 @@ class KeyReportsController extends BaseController
 
      public function indentsStatus()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$this->isAllowed($user)) return $this->respond(['message' => 'Forbidden'], 403);
 
           $branch_id = $this->request->getGet('branch_id');
@@ -401,7 +401,7 @@ class KeyReportsController extends BaseController
 
      public function branchVisitCycle()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$this->isAllowed($user)) return $this->respond(['message' => 'Forbidden'], 403);
 
           $filter_branch_id = $this->request->getGet('branch_id');

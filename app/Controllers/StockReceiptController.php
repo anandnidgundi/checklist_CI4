@@ -11,7 +11,7 @@ class StockReceiptController extends BaseController
 
      public function create()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           $data = $this->request->getJSON(true);
 
           log_message('debug', 'StockReceipt.create - User: ' . json_encode($user));

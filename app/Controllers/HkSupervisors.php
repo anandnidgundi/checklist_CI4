@@ -12,7 +12,7 @@ class HkSupervisors extends BaseController
 
      public function index()
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkSupervisorsModel();
 
           $role = $this->request->getGet('role');
@@ -51,7 +51,7 @@ class HkSupervisors extends BaseController
 
      public function show($id = null)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           if (!$id) return $this->respond(['message' => 'Missing id'], 400);
           $m = new HkSupervisorsModel();
           $rec = $m->find($id);
@@ -75,7 +75,7 @@ class HkSupervisors extends BaseController
 
      public function create()
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           $data = $this->request->getJSON(true);
 
           if (empty($data['emp_code']) || empty($data['role'])) {
@@ -105,7 +105,7 @@ class HkSupervisors extends BaseController
 
      public function update($id = null)
      {
-          $user = $this->validateAuthorization();
+          $user = $this->validateAuthorizationNew();
           if (!$id) return $this->respond(['message' => 'Missing id'], 400);
 
           $data = $this->request->getJSON(true);
@@ -132,7 +132,7 @@ class HkSupervisors extends BaseController
 
      public function delete($id = null)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           if (!$id) return $this->respond(['message' => 'Missing id'], 400);
 
           $m = new HkSupervisorsModel();
@@ -150,7 +150,7 @@ class HkSupervisors extends BaseController
      // get supervisors branches by emp_code
      public function getHkBranchesByEmpCode($emp_code = null)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           if (!$emp_code) return $this->respond(['message' => 'Missing emp_code'], 400);
 
           $m = new HkSupervisorsModel();

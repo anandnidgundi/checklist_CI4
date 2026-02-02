@@ -22,7 +22,7 @@ class HkBudgets extends BaseController
       */
      public function getAllBranchBudgets()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -50,7 +50,7 @@ class HkBudgets extends BaseController
       */
      public function getBranchBudget($branch_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -85,7 +85,7 @@ class HkBudgets extends BaseController
       */
      public function getBudgetsByCluster($cluster_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -113,7 +113,7 @@ class HkBudgets extends BaseController
       */
      public function createBranchBudget()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -182,7 +182,7 @@ class HkBudgets extends BaseController
       */
      public function updateBranchBudget($budget_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -240,7 +240,7 @@ class HkBudgets extends BaseController
       */
      public function updateBudgetByBranch($branch_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -288,7 +288,7 @@ class HkBudgets extends BaseController
       */
      public function deleteBranchBudget($budget_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -332,7 +332,7 @@ class HkBudgets extends BaseController
       */
      public function deleteBudgetByBranch($branch_id)
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }
@@ -376,7 +376,7 @@ class HkBudgets extends BaseController
       */
      public function upsertBranchBudget()
      {
-          $userDetails = $this->validateAuthorization();
+          $userDetails = $this->validateAuthorizationNew();
           if (!$userDetails) {
                return $this->respond(['status' => false, 'message' => 'Unauthorized access'], 401);
           }

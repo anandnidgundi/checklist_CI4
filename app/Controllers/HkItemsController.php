@@ -13,14 +13,15 @@ class HkItemsController extends BaseController
 
      public function index()
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkItemsModel();
-          return $this->respond(['data' => $m->findAll()], 200);
+          // Return items ordered by name ascending
+          return $this->respond(['data' => $m->getAllItems()], 200);
      }
 
      public function getByType($type)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkItemsModel();
           $rows = $m->where('item_type', $type)->orderBy('name', 'ASC')->findAll();
           return $this->respond(['data' => $rows], 200);
@@ -28,7 +29,7 @@ class HkItemsController extends BaseController
 
      public function show($id)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkItemsModel();
           $item = $m->find($id);
           return $this->respond($item ? ['data' => $item] : ['message' => 'Not found'], $item ? 200 : 404);
@@ -36,7 +37,7 @@ class HkItemsController extends BaseController
 
      public function create()
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $input = $this->request->getJSON(true) ?: [];
 
           // sanitize + validation
@@ -85,7 +86,7 @@ class HkItemsController extends BaseController
 
      public function update($id)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkItemsModel();
           $existing = $m->find($id);
           if (!$existing) return $this->respond(['message' => 'Not found'], 404);
@@ -94,8 +95,12 @@ class HkItemsController extends BaseController
 
           // sanitize + validation
           $name = isset($input['name']) ? trim(strip_tags($input['name'])) : $existing['name'];
-          $brand = array_key_exists('brand', $input) ? trim(strip_tags($input['brand'])) : $existing['brand'];
-          $unit = array_key_exists('unit', $input) ? trim(strip_tags($input['unit'])) : $existing['unit'];
+          $brand = array_key_exists('brand', $input) ? (is_null($input['brand']) ? null : trim(strip_tags($input['brand']))) : $existing['brand'];
+          $unit = array_key_exists('unit', $input) ? (is_null($input['unit']) ? null : trim(strip_tags($input['unit']))) : $existing['unit'];
+
+          // handle item_type: if client sends empty string, keep existing
+          $item_type = array_key_exists('item_type', $input) ? trim(strip_tags((string)$input['item_type'])) : $existing['item_type'];
+          if ($item_type === '') $item_type = $existing['item_type'];
 
           if ($name === '') {
                return $this->respond(['message' => 'Name is required'], 400);
@@ -103,6 +108,7 @@ class HkItemsController extends BaseController
           if (strlen($name) > 150) $name = substr($name, 0, 150);
           if ($brand !== null && strlen($brand) > 100) $brand = substr($brand, 0, 100);
           if ($unit !== null && strlen($unit) > 50) $unit = substr($unit, 0, 50);
+          if ($item_type !== null && strlen($item_type) > 50) $item_type = substr($item_type, 0, 50);
 
           // prevent duplicate name (other record)
           $conflict = $m->where('name', $name)->where('id !=', $id)->first();
@@ -113,10 +119,10 @@ class HkItemsController extends BaseController
           $db = \Config\Database::connect();
           $db->transStart();
           try {
-               $m->update($id, ['name' => $name, 'brand' => $brand, 'unit' => $unit, 'item_type' => $input['item_type'] ?? $existing['item_type']]);
+               $updated = $m->update($id, ['name' => $name, 'brand' => $brand, 'unit' => $unit, 'item_type' => $item_type]);
 
                // notification for update
-               $payload = json_encode(['id' => (int)$id, 'name' => $name, 'brand' => $brand, 'unit' => $unit]);
+               $payload = json_encode(['id' => (int)$id, 'name' => $name, 'brand' => $brand, 'unit' => $unit, 'item_type' => $item_type]);
                $db->table('hk_notifications')->insert([
                     'type' => 'hk_item_updated',
                     'payload' => $payload,
@@ -124,7 +130,11 @@ class HkItemsController extends BaseController
                ]);
 
                $db->transComplete();
-               return $this->respond(['message' => 'Updated'], 200);
+
+               // return updated row for verification
+               $newItem = $m->find($id);
+
+               return $this->respond(['message' => 'Updated', 'updated' => (bool)$updated, 'affected' => $db->affectedRows(), 'item' => $newItem], 200);
           } catch (\Exception $e) {
                $db->transRollback();
                return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
@@ -133,7 +143,7 @@ class HkItemsController extends BaseController
 
      public function delete($id)
      {
-          $this->validateAuthorization();
+          $this->validateAuthorizationNew();
           $m = new HkItemsModel();
           $item = $m->find($id);
           if (!$item) return $this->respond(['message' => 'Not found'], 404);
