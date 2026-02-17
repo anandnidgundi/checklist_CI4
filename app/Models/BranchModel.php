@@ -27,7 +27,7 @@ class BranchModel extends Model
 
                // 1) Fetch main branch info from `branch_info` (primary DB) and enrich with secondary Branches
                $sql = "SELECT bi.branch_id,bi.branch_manager_name,bi.branch_manager_mobile,bic.SysField AS branch_name, s.name AS sbu_name, s.status AS sbu_status,
-                  bi.state AS state_id, bi.city AS city_id, bc.branch_type, bi.address, bi.cluster_manager_name, bi.cluster_manager_mobile, bi.landline_no,
+                  bi.state AS state_id, bi.city AS city_id, bi.category AS category, bc.branch_type, bi.address, bi.cluster_manager_name, bi.cluster_manager_mobile, bi.landline_no,
                   bi.zonal_manager_name,bi.zonal_manager_mobile,bi.mobile_no,bi.pre_number,
                   bi.map, bi.branch_email, bi.branch_manager_email, 
                   bi.branch_timing_weekdays_from, bi.branch_timing_weekdays_to,bi.modified_date, 
@@ -112,6 +112,7 @@ WHERE bio.branch = ? AND bio.na != 'NA' AND bio.status = '1'",
                     'sbu_name' => $branch['sbu_name'] ?? null,
                     'sbu_status' => $branch['sbu_status'] ?? null,
                     'branch_type' => $branch['branch_type'] ?? null,
+                    'category' => $branch['category'] ?? null,
                     'processing_center_name' => $branch['processing_center_name'] ?? null,
                     'branch_modified_date' => $branch['modified_date'] ?? null,
                     'state_name' => $state,
