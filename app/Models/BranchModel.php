@@ -6,133 +6,139 @@ use CodeIgniter\Model;
 
 class BranchModel extends Model
 {
-    /**
-     * Get detailed branch information by id.
-     * - Primary source: `secondary` DB -> `Branches` table (travelapp)
-     * - Enrich with cluster info (clusters table), nearest branches (by city/state)
-     *
-     * Returns an associative array (or null when not found).
-     */
-    public function getBranchDetails($id)
-    {
-        $id = (int) $id;
-        if ($id <= 0) {
-            return null;
-        }
+     /**
+      * Get detailed branch information by id.
+      * - Primary source: `secondary` DB -> `Branches` table (travelapp)
+      * - Enrich with cluster info (clusters table), nearest branches (by city/state)
+      *
+      * Returns an associative array (or null when not found).
+      */
+     public function getBranchDetails($id)
+     {
+          $id = (int) $id;
+          if ($id <= 0) {
+               return null;
+          }
 
-        try {
-            // 1) Try to fetch from the secondary (travelapp) DB first
-            $db2 = \Config\Database::connect('secondary');
+          try {
+               // Primary (app) DB + secondary (travelapp) DB connections
+               $db = \Config\Database::connect();
+               $db_secondary = \Config\Database::connect('secondary');
 
-            $branchRow = $db2->table('Branches')
-                ->select('*')
-                ->where('id', $id)
-                ->get()
-                ->getRowArray();
+               // 1) Fetch main branch info from `branch_info` (primary DB) and enrich with secondary Branches
+               $sql = "SELECT bi.branch_id,bi.branch_manager_name,bi.branch_manager_mobile,bic.SysField AS branch_name, s.name AS sbu_name, s.status AS sbu_status,
+                  bi.state AS state_id, bi.city AS city_id, bc.branch_type, bi.address, bi.cluster_manager_name, bi.cluster_manager_mobile, bi.landline_no,
+                  bi.zonal_manager_name,bi.zonal_manager_mobile,bi.mobile_no,bi.pre_number,
+                  bi.map, bi.branch_email, bi.branch_manager_email, 
+                  bi.branch_timing_weekdays_from, bi.branch_timing_weekdays_to,bi.modified_date, 
+                  bi.branch_timing_weekend_from, bi.branch_timing_weekend_to,  GROUP_CONCAT(pc.name SEPARATOR ', ') as processing_center_name
+            FROM branch_info AS bi
+            LEFT JOIN " . $db_secondary->database . ".Branches bic ON bi.branch_id = bic.SysNo
+            LEFT JOIN sbu s ON bi.sbu = s.id
+            LEFT JOIN processing_centers pc ON FIND_IN_SET(pc.id, bi.processing_center_id)
+            LEFT JOIN branch_category bc ON bi.category = bc.id
+            WHERE bi.branch_id = ?";
 
-            // If not found in secondary DB, fall back to local `branches` / `bi_centres`
-            if (empty($branchRow)) {
-                // try primary DB tables used in this app
-                $local = $this->db->table('branches')
-                    ->select('branch_id as id, branch as SysField, address, city, state, pincode, phone')
-                    ->where('branch_id', $id)
-                    ->get()
-                    ->getRowArray();
+               $query = $db->query($sql, [$id]);
+               $branch = $query->getRowArray();
 
-                if (!empty($local)) {
-                    // normalize to same keys as travelapp `Branches` where possible
-                    $branchRow = array_merge(
-                        ['id' => $local['id'], 'SysField' => $local['SysField']],
-                        array_intersect_key($local, array_flip(['address', 'city', 'state', 'pincode', 'phone']))
-                    );
-                }
-            }
+               if (! $branch) {
+                    // nothing found in primary `branch_info`
+                    return null;
+               }
 
-            if (empty($branchRow)) {
-                return null;
-            }
+               // 2) state (from secondary DB)
+               $state = null;
+               if (! empty($branch['state_id'])) {
+                    $stateRow = $db_secondary->query("SELECT name AS state_name FROM state WHERE id = ?", [$branch['state_id']])->getRowArray();
+                    $state = $stateRow['state_name'] ?? null;
+               }
 
-            $result = [
-                'branch' => $branchRow,
-                // placeholders to be filled below
-                'cluster' => null,
-                'nearest_branches' => [],
-                'processing_centres' => [],
-                'tests' => [],
-                'top_ten_tests' => [],
-            ];
+               // 3) city (from secondary DB)
+               $city = null;
+               if (! empty($branch['city_id'])) {
+                    $cityRow = $db_secondary->query("SELECT city_name FROM city WHERE id = ?", [$branch['city_id']])->getRowArray();
+                    $city = $cityRow['city_name'] ?? null;
+               }
 
-            // 2) Cluster / zone info (clusters table commonly contains a CSV `branches` column)
-            try {
-                $clusterRow = $db2->table('clusters')
-                    ->select('cluster, cluster_id, branches')
-                    ->where("FIND_IN_SET(?, branches)", $id, false)
-                    ->get()
-                    ->getRowArray();
+               // 4) nearest branches (use branch_nearest_branches + secondary Branches)
+               $nearestSql = "SELECT DISTINCT bnb.near_branch, b.SysField AS near_branch_name, bnb.distance, bnb.time
+                    FROM branch_nearest_branches bnb
+                    LEFT JOIN " . $db_secondary->database . ".Branches b ON bnb.near_branch = b.SysNo
+                    WHERE bnb.branch = ?
+                    ORDER BY bnb.distance ASC";
+               $nearestBranches = $db->query($nearestSql, [$id])->getResultArray();
 
-                if (!empty($clusterRow)) {
-                    $result['cluster'] = $clusterRow;
-                }
-            } catch (\Throwable $e) {
-                // non-fatal; some deployments may not have clusters table in the secondary DB
-                log_message('warning', 'BranchModel::getBranchDetails - cluster lookup failed: ' . $e->getMessage());
-            }
+               // 5) top ten packages/tests
+               $toptenPackages = $db->query(
+                    "SELECT ttp.service_id, ttp.package_name, sm.ValidUpTo
+                     FROM top_ten_package ttp
+                     JOIN servicemaster sm ON ttp.service_id = sm.ServiceId
+                     WHERE CAST(ttp.branch AS UNSIGNED) = CAST(? AS UNSIGNED)
+                     ORDER BY ttp.id DESC",
+                    [$id]
+               )->getResultArray();
 
-            // 3) Nearest branches (same city/state) — best-effort from secondary DB
-            try {
-                $qb = $db2->table('Branches')->select('id, SysField, city, state');
-                if (!empty($branchRow['city'])) {
-                    $qb->where('city', $branchRow['city']);
-                } elseif (!empty($branchRow['state'])) {
-                    $qb->where('state', $branchRow['state']);
-                }
-                $nearest = $qb->where('id !=', $id)
-                    ->limit(6)
-                    ->get()
-                    ->getResultArray();
+               $toptenTests = $db->query(
+                    "SELECT tts.service_id, tts.package_name
+                     FROM top_ten_tests tts
+                     WHERE tts.branch = ?
+                     ORDER BY tts.id DESC",
+                    [$id]
+               )->getResultArray();
 
-                $result['nearest_branches'] = $nearest ?: [];
-            } catch (\Throwable $e) {
-                log_message('warning', 'BranchModel::getBranchDetails - nearest branches lookup failed: ' . $e->getMessage());
-            }
+               // 6) tests (branch_info_other + daily override)
+               $tests = $db->query(
+                    "SELECT bio.branch, bio.test_category, bio.test_name, bio.week_days_from_time1, bio.week_days_to_time1, bio.week_end_days_from_time1,
+bio.week_end_days_to_time1, bio.week_days_from_time2, bio.week_days_to_time2, bio.week_days_from_time3, bio.week_days_to_time3, bio.week_end_days_from_time2,
+bio.week_end_days_to_time2, bio.week_end_days_from_time3, bio.week_end_days_to_time3, bio.oncall, bio.prescription, bio.remarks, bio.tat, bio.appointment_number, bio.female_available, bio.special_instructions, bio.appointment_required,
+bio.modified_date, biod.daily_remarks
+FROM branch_info_other AS bio
+LEFT JOIN branch_info_other_daily AS biod ON bio.branch = biod.branch AND biod.daily_validity = CURDATE() and biod.`dis_status`='Y' and bio.test_name=biod.test_name
+WHERE bio.branch = ? AND bio.na != 'NA' AND bio.status = '1'",
+                    [$id]
+               )->getResultArray();
 
-            // 4) Processing centres & tests (best-effort, defensive)
-            // These tables vary across deployments; attempt to read common names and ignore failures.
-            try {
-                if ($db2->tableExists('processing_centres')) {
-                    $pcs = $db2->table('processing_centres')
-                        ->select('*')
-                        ->where('branch_id', $id)
-                        ->get()
-                        ->getResultArray();
+               // 7) available tests (category table)
+               $availableTests = $db->query("SELECT * FROM `branch_info_test_category` WHERE branch = ? AND status = '0' ORDER BY test_name", [$id])->getResultArray();
 
-                    $result['processing_centres'] = $pcs ?: [];
-                }
-            } catch (\Throwable $e) {
-                log_message('debug', 'BranchModel::getBranchDetails - processing_centres not available: ' . $e->getMessage());
-            }
-
-            try {
-                // common test tables might be `tests`, `test_master` or `lab_tests` — try a few
-                $tests = [];
-                if ($db2->tableExists('tests')) {
-                    $tests = $db2->table('tests')->select('id, name')->where('branch_id', $id)->limit(50)->get()->getResultArray();
-                } elseif ($db2->tableExists('test_master')) {
-                    $tests = $db2->table('test_master')->select('id, test_name as name')->where('branch_id', $id)->limit(50)->get()->getResultArray();
-                }
-                $result['tests'] = $tests ?: [];
-            } catch (\Throwable $e) {
-                log_message('debug', 'BranchModel::getBranchDetails - tests lookup failed: ' . $e->getMessage());
-            }
-
-            // 5) Top ten tests (if analytics available) — best-effort fallback to empty
-            $result['top_ten_tests'] = [];
-
-            return $result;
-        } catch (\Throwable $ex) {
-            log_message('error', 'BranchModel::getBranchDetails exception: ' . $ex->getMessage());
-            return null;
-        }
-    }
+               // 8) assemble and return
+               return [
+                    'branch_id' => $branch['branch_id'],
+                    'branch_name' => $branch['branch_name'],
+                    'landline_no' => $branch['landline_no'] ?? null,
+                    'branch_mobile_no' => $branch['mobile_no'] ?? null,
+                    'branch_pre_number' => $branch['pre_number'] ?? null,
+                    'sbu_name' => $branch['sbu_name'] ?? null,
+                    'sbu_status' => $branch['sbu_status'] ?? null,
+                    'branch_type' => $branch['branch_type'] ?? null,
+                    'processing_center_name' => $branch['processing_center_name'] ?? null,
+                    'branch_modified_date' => $branch['modified_date'] ?? null,
+                    'state_name' => $state,
+                    'city_name' => $city,
+                    'address' => $branch['address'] ?? null,
+                    'map' => $branch['map'] ?? null,
+                    'branch_manager_name' => $branch['branch_manager_name'] ?? null,
+                    'branch_manager_mobile' => $branch['branch_manager_mobile'] ?? null,
+                    'cluster_manager_name' => $branch['cluster_manager_name'] ?? null,
+                    'cluster_manager_mobile' => $branch['cluster_manager_mobile'] ?? null,
+                    'zonal_manager_name' => $branch['zonal_manager_name'] ?? null,
+                    'zonal_manager_mobile' => $branch['zonal_manager_mobile'] ?? null,
+                    'branch_email' => $branch['branch_email'] ?? null,
+                    'branch_manager_email' => $branch['branch_manager_email'] ?? null,
+                    'branch_timing_weekdays_from' => $branch['branch_timing_weekdays_from'] ?? null,
+                    'branch_timing_weekdays_to' => $branch['branch_timing_weekdays_to'] ?? null,
+                    'branch_timing_weekend_from' => $branch['branch_timing_weekend_from'] ?? null,
+                    'branch_timing_weekend_to' => $branch['branch_timing_weekend_to'] ?? null,
+                    'nearest_branches' => $nearestBranches ?: [],
+                    'top_ten_packages' => $toptenPackages ?: [],
+                    'top_ten_tests' => $toptenTests ?: [],
+                    'tests' => $tests ?: [],
+                    'available_tests' => $availableTests ?: [],
+               ];
+          } catch (\Throwable $ex) {
+               log_message('error', 'BranchModel::getBranchDetails exception: ' . $ex->getMessage());
+               return null;
+          }
+     }
 }
-
