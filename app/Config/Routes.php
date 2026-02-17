@@ -20,8 +20,13 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "uploadFile", "FileUpload::uploadFile", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getFiles", "FileUpload::getFiles", ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], "download/(:segment)", "FileUpload::download/$1", ['filter' => 'authFilter']);
+
+
+
      $routes->match(['POST', 'options'], "addBM_Task", "BM_Tasks::addBM_Task", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getBM_TaskDetails/(:segment)", "BM_Tasks::getBM_TaskDetails/$1", ['filter' => 'authFilter']);
+
+
      $routes->match(['POST', 'options'], "editBM_Task/(:segment)", "BM_Tasks::editBM_Task/$1", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getBM_TaskList", "BM_Tasks::getBM_TaskList", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getBranchComboTaskListNew", "BM_Tasks::getBranchComboTaskListNew", ['filter' => 'authFilter']);
@@ -116,7 +121,8 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "addClusterToZone", "User::addClusterToZone", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "addBranchToCluster", "User::addBranchToCluster", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "BM_DashboardCount", "User::BM_DashboardCount", ['filter' => 'authFilter']);
-     $routes->match(['POST', 'options'], "CM_DashboardCount", "User::CM_DashboardCount", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "CM_DashboardCount", "DashboardController::CM_DashboardCount", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "getLatestTasksByBranch", "DashboardController::getLatestTasksByBranch", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "checkToken", "User::checkToken", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getUserBranchClusterZoneList", "User::getUserBranchClusterZoneList", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getDepts", "Home::getDeptWithCat", ['filter' => 'authFilter']);
@@ -137,6 +143,8 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "deleteCluster", "Home::deleteCluster", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "clusterMapping", "Home::clusterMapping", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getBranchDetails", "Home::getBranchDetails", ['filter' => 'authFilter']);
+     // New: detailed branch info (uses secondary DB when available)
+     $routes->match(['GET', 'options'], "branch/(:num)", "BranchController::getBranchDetails/$1", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "editBranchDetails", "Home::editBranchDetails", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "addNewBranch", "Home::addNewBranch", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "deleteBranch", "Home::deleteBranch", ['filter' => 'authFilter']);
@@ -209,6 +217,7 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['GET', 'options'], "getVisitById/(:num)", "VisitMaster::getVisitById/$1", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "updateVisit/(:num)", "VisitMaster::updateVisit/$1", ['filter' => 'authFilter']);
      $routes->match(['DELETE', 'options'], "deleteVisit/(:num)", "VisitMaster::deleteVisit/$1", ['filter' => 'authFilter']);
+
      //routes for PestControl
      $routes->match(['POST', 'options'], "createPestControl", "PestControl::createPestControl", ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], "getPestControlList", "PestControl::getPestControlList", ['filter' => 'authFilter']);
@@ -351,4 +360,67 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], 'branding-checklist/sections', 'BrandingChecklistController::createSection', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], 'branding-checklist/subsections', 'BrandingChecklistController::subSections', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'branding-checklist/subsections', 'BrandingChecklistController::createSubSection', ['filter' => 'authFilter']);
+
+     // Branding dashboard counts (aggregate metrics) used by front-end dashboards
+     $routes->match(['POST', 'options'], "Branding_DashboardCount", "BrandingChecklistController::dashboardCount", ['filter' => 'authFilter']);
+
+     // VDC Forms
+     $routes->match(['POST', 'options'], "createForm", "FormsController::createForm", ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], "getFormsList", "FormsController::getFormsList", ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], "getFormById/(:num)", "FormsController::getFormById/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "updateForm/(:num)", "FormsController::updateForm/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteForm", "FormsController::deleteForm", ['filter' => 'authFilter']);
+
+     // New Department
+     $routes->match(['GET', 'options'], "getNewDepartments", "NewDepartmentController::getNewDepartments", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "addNewDepartment", "NewDepartmentController::addNewDepartment", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "editNewDepartment/(:num)", "NewDepartmentController::editNewDepartment/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteNewDepartment/(:num)", "NewDepartmentController::deleteNewDepartment/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteNewDepartment", "NewDepartmentController::deleteNewDepartment", ['filter' => 'authFilter']);
+
+     // Form Inputs
+     $routes->match(['GET', 'options'], "getFormInputs", "FormInputsController::getFormInputs", ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], "getFormInputById/(:num)", "FormInputsController::getFormInputById/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "addFormInput", "FormInputsController::addFormInput", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "editFormInput/(:num)", "FormInputsController::editFormInput/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteFormInput/(:num)", "FormInputsController::deleteFormInput/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteFormInput", "FormInputsController::deleteFormInput", ['filter' => 'authFilter']);
+
+     // Form Sections
+     $routes->match(['GET', 'options'], "getFormSections", "FormSectionsController::getFormSections", ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], "getFormSectionById/(:num)", "FormSectionsController::getFormSectionById/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "addFormSection", "FormSectionsController::addFormSection", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "editFormSection/(:num)", "FormSectionsController::editFormSection/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteFormSection/(:num)", "FormSectionsController::deleteFormSection/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteFormSection", "FormSectionsController::deleteFormSection", ['filter' => 'authFilter']);
+
+     // Form Sub Sections
+     $routes->match(['GET', 'options'], "getFormSubSections", "FormSubSectionsController::getFormSubSections", ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], "getFormSubSectionById/(:num)", "FormSubSectionsController::getFormSubSectionById/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "addFormSubSection", "FormSubSectionsController::addFormSubSection", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "editFormSubSection/(:num)", "FormSubSectionsController::editFormSubSection/$1", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "deleteFormSubSection/(:num)", "FormSubSectionsController::deleteFormSubSection/$1", ['filter' => 'authFilter']);
+
+     // Dynamic Form Records
+     $routes->match(['POST', 'options'], 'dynamic-form/save', 'DynamicFormController::save', ['filter' => 'authFilter']);
+     // Unified upload/list endpoints for dynamic-form-managed attachments (used by modern clients)
+     $routes->match(['POST', 'options'], 'dynamic-form/(:num)/photos', 'DynamicFormController::uploadPhoto/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'dynamic-form/(:num)/photos', 'DynamicFormController::photos/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'dynamic-form/list', 'DynamicFormController::list', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'dynamic-form/create', 'DynamicFormController::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'dynamic-form/update/(:segment)', 'DynamicFormController::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'dynamic-form/show/(:segment)', 'DynamicFormController::show/$1', ['filter' => 'authFilter']);
+
+     // Email Templates (CRUD + render preview)
+     $routes->match(['GET', 'options'], 'email-templates', 'EmailTemplateController::index', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'email-templates/(:num)', 'EmailTemplateController::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'email-templates', 'EmailTemplateController::create', ['filter' => 'authFilter']);
+     $routes->match(['PUT', 'PATCH', 'options'], 'email-templates/(:num)', 'EmailTemplateController::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['DELETE', 'options'], 'email-templates/(:num)', 'EmailTemplateController::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'email-templates/render/(:segment)', 'EmailTemplateController::render/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'email-templates/send/(:segment)', 'EmailTemplateController::send/$1', ['filter' => 'authFilter']);
+
+     // Logs API (admin)
+     $routes->match(['POST', 'options'], "logs", "LogsController::addLog", ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], "logs", "LogsController::list", ['filter' => 'authFilter']);
 });
