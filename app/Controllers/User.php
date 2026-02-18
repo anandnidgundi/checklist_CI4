@@ -327,7 +327,11 @@ class User extends BaseController
           $branchList = $users->getClusterBranchList($cluster_id);
           log_message('error', 'Branch List: ' . json_encode($branchList));
 
-          if ($branchList) {
+          // Return success even if the list is empty so frontend can gracefully fall back
+          if (is_array($branchList)) {
+               if (empty($branchList)) {
+                    log_message('warning', 'getClusterBranchList returned empty for cluster_id: ' . $cluster_id);
+               }
                return $this->respond([
                     'STATUS' => true,
                     'message' => 'User Branch list.',

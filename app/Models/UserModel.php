@@ -129,7 +129,7 @@ class UserModel extends Model
           return $bmDashboardCount;
      }
 
-     public function CM_DashboardCount($user, $role, $selectedMonth, $selectedBranch, $selectedCluster, $selectedZone)
+     public function CM_DashboardCount($user, $role, $selectedMonth, $selectedBranch, $selectedCluster)
      {
           $db2 = \Config\Database::connect('default');
           // Get branch IDs for the selected cluster
@@ -546,21 +546,133 @@ class UserModel extends Model
      {
           try {
                $db2 = \Config\Database::connect('default');
+               $secondaryDB = \Config\Database::connect('secondary'); // travelapp DB connection
+
                if (!$db2) {
                     log_message('error', 'Failed to connect to default database.');
                     return [];
                }
 
-               $builder = $db2->table('cluster_branch_map as cb')
-                    ->select('b.branch, cb.branch_id')
-                    ->join('branches as b', 'b.branch_id = cb.branch_id', 'left')
-                    ->where('cb.cluster_id', $cluster_id);
+               // 1) Get branch IDs from cluster_branch_map using the default DB
+               $mappings = $db2->table('cluster_branch_map as cb')
+                    ->select('cb.branch_id')
+                    ->where('cb.cluster_id', $cluster_id)
+                    ->get()
+                    ->getResultArray();
 
-               $query = $builder->get();
-               $result = $query->getResultArray();
+               if (empty($mappings)) {
+                    log_message('debug', "No branch mappings found for cluster_id={$cluster_id}");
+                    return [];
+               }
 
-               log_message('debug', 'Cluster Branch List Result: ' . json_encode($result));
-               return $result;
+               $branchIds = array_values(array_unique(array_map(function ($r) {
+                    return (string)($r['branch_id'] ?? $r['id'] ?? '');
+               }, $mappings)));
+
+               log_message('debug', 'getClusterBranchList mappings: ' . json_encode($mappings));
+               log_message('debug', 'getClusterBranchList branchIds to resolve: ' . implode(',', $branchIds));
+
+               // 2) Fetch branch details from the travelapp (secondary) DB
+               $branches = [];
+               try {
+                    // Try explicit fully-qualified table name first (travelapp.branches), then fall back to common variants
+                    $branchesQuery = [];
+                    try {
+                         $branchesQuery = $secondaryDB->table('travelapp.Branches')
+                              ->select('id as branch_id, SysField as branch')
+                              ->whereIn('id', $branchIds)
+                              ->orderBy('id', 'ASC')
+                              ->get()
+                              ->getResultArray();
+                    } catch (\Exception $e) {
+                         // Fall back to table name without schema or lowercase
+                         try {
+                              $branchesQuery = $secondaryDB->table('Branches')
+                                   ->select('id as branch_id, SysField as branch')
+                                   ->whereIn('id', $branchIds)
+                                   ->orderBy('id', 'ASC')
+                                   ->get()
+                                   ->getResultArray();
+                         } catch (\Exception $e2) {
+                              $branchesQuery = $secondaryDB->table('branches')
+                                   ->select('id as branch_id, SysField as branch')
+                                   ->whereIn('id', $branchIds)
+                                   ->orderBy('id', 'ASC')
+                                   ->get()
+                                   ->getResultArray();
+                         }
+                    }
+
+                    // Index by id for quick lookup
+                    $branchMap = [];
+                    foreach ($branchesQuery as $b) {
+                         $branchMap[(string)$b['branch_id']] = $b['branch'];
+                    }
+                    log_message('debug', 'getClusterBranchList: fetched branchMap: ' . json_encode($branchMap));
+
+                    // Identify missing ids that have no label in branchMap
+                    $missing = array_values(array_diff($branchIds, array_keys($branchMap)));
+                    if (!empty($missing)) {
+                         log_message('warning', 'getClusterBranchList: missing branch labels for ids: ' . implode(',', $missing) . ' — attempting extra lookup');
+                         try {
+                              $more = $secondaryDB->table('Branches')
+                                   ->select('id as branch_id, SysField as branch')
+                                   ->whereIn('id', $missing)
+                                   ->get()
+                                   ->getResultArray();
+                              foreach ($more as $m) {
+                                   $branchMap[(string)$m['branch_id']] = $m['branch'];
+                              }
+                              log_message('debug', 'getClusterBranchList: after extra lookup branchMap now: ' . json_encode($branchMap));
+                         } catch (\Exception $e) {
+                              log_message('error', 'getClusterBranchList: extra lookup failed: ' . $e->getMessage());
+                         }
+                    }
+
+                    // If still missing, try clusters table branches column as fallback to preserve intended membership
+                    $stillMissing = array_values(array_diff($branchIds, array_keys($branchMap)));
+                    if (!empty($stillMissing)) {
+                         log_message('warning', 'getClusterBranchList: still missing labels for ids: ' . implode(',', $stillMissing) . ' — checking clusters table for fallback branch ids');
+                         try {
+                              $clusterRow = $db2->table('clusters')->select('branches')->where('cluster_id', $cluster_id)->get()->getRowArray();
+                              if (!empty($clusterRow) && !empty($clusterRow['branches'])) {
+                                   $clusterBranchIds = array_filter(array_map('trim', explode(',', $clusterRow['branches'])));
+                                   foreach ($clusterBranchIds as $cbid) {
+                                        if (!in_array($cbid, $branchIds, true)) {
+                                             $branchIds[] = (string)$cbid;
+                                        }
+                                   }
+                                   // Attempt to fetch their names as well
+                                   $more2 = $secondaryDB->table('Branches')
+                                        ->select('id as branch_id, SysField as branch')
+                                        ->whereIn('id', $clusterBranchIds)
+                                        ->get()
+                                        ->getResultArray();
+                                   foreach ($more2 as $m2) {
+                                        $branchMap[(string)$m2['branch_id']] = $m2['branch'];
+                                   }
+                                   log_message('debug', 'getClusterBranchList: clusters table fallback added ids: ' . implode(',', $clusterBranchIds));
+                              }
+                         } catch (\Exception $e) {
+                              log_message('error', 'getClusterBranchList: clusters table fallback failed: ' . $e->getMessage());
+                         }
+                    }
+
+                    // Preserve ordering from cluster_branch_map (and any added fallbacks)
+                    foreach ($branchIds as $id) {
+                         $label = ($branchMap[$id] ?? $id);
+                         $branches[] = ['branch' => $label, 'name' => $label, 'branch_id' => $id];
+                    }
+               } catch (\Exception $e) {
+                    // If secondary DB lookup fails, return only IDs as fallback
+                    log_message('error', 'Error fetching branches from travelapp DB: ' . $e->getMessage());
+                    foreach ($branchIds as $id) {
+                         $branches[] = ['branch' => $id, 'name' => $id, 'branch_id' => $id];
+                    }
+               }
+
+               log_message('debug', 'Cluster Branch List Result: ' . json_encode($branches));
+               return $branches;
           } catch (\Exception $e) {
                log_message('error', 'Database error in getClusterBranchList: ' . $e->getMessage());
                return [];

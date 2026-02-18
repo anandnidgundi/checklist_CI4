@@ -122,6 +122,8 @@ class BrandingChecklistModel extends Model
                     'created_by' => $user->emp_code ?? $user->username ?? null,
                     'status' => $payload['status'] ?? 'draft'
                ];
+
+
                $db->table('branding_checklists')->insert($data);
                $id = (int)$db->insertID();
 
@@ -287,6 +289,219 @@ class BrandingChecklistModel extends Model
      {
           $db = \Config\Database::connect();
           return $db->table('branding_photos')->where('checklist_id', $checklistId)->orderBy('id', 'asc')->get()->getResultArray();
+     }
+
+     /**
+      * Delete a photo row by filename for a checklist and remove the file from disk when possible.
+      * Returns true if at least one record was deleted.
+      */
+     public function deletePhotos(int $checklistId, array $filenames = [])
+     {
+          if (empty($filenames)) return false;
+          $db = \Config\Database::connect();
+
+          $rows = $db->table('branding_photos')->where('checklist_id', $checklistId)->whereIn('filename', $filenames)->get()->getResultArray();
+          if (empty($rows)) return false;
+
+          // delete DB rows
+          $db->table('branding_photos')->where('checklist_id', $checklistId)->whereIn('filename', $filenames)->delete();
+
+          // remove files from disk if present
+          $uploadPath = WRITEPATH . 'uploads/branding_photos/';
+          foreach ($rows as $r) {
+               $fn = $r['filename'] ?? null;
+               if ($fn) {
+                    $path = $uploadPath . $fn;
+                    try {
+                         if (is_file($path)) @unlink($path);
+                    } catch (\Throwable $e) {
+                         // ignore file deletion failures
+                    }
+               }
+          }
+
+          return true;
+     }
+
+     /**
+      * Aggregate dashboard counts for the given branch and date range.
+      * Returns keys expected by the front-end: total_visits, photos_count, actions_total, actions_high, actions_medium, actions_low, checklists, recent
+      */
+     public function getDashboardCounts($branch = '', $startDate = null, $endDate = null)
+     {
+          $db = \Config\Database::connect();
+
+          if (empty($startDate)) $startDate = date('Y-m-01');
+          if (empty($endDate)) $endDate = date('Y-m-t');
+
+          // Total visits / checklists
+          $totalQb = $db->table('branding_checklists as c')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate);
+          if ($branch !== '' && $branch !== null) $totalQb->where('c.branch_id', $branch);
+          $total_visits = (int)$totalQb->countAllResults(false);
+
+          // Photos attached (join photos -> checklists filtered)
+          $photosQb = $db->table('branding_photos as p')
+               ->join('branding_checklists as c', 'c.id = p.checklist_id')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate);
+          if ($branch !== '' && $branch !== null) $photosQb->where('c.branch_id', $branch);
+          $photos = (int)$photosQb->countAllResults(false);
+
+          // Actions total and by priority
+          $actions_total = (int)$db->table('branding_actions as a')
+               ->join('branding_checklists as c', 'c.id = a.checklist_id')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          $actions_high = (int)$db->table('branding_actions as a')
+               ->join('branding_checklists as c', 'c.id = a.checklist_id')
+               ->where('a.priority', 'high')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          $actions_medium = (int)$db->table('branding_actions as a')
+               ->join('branding_checklists as c', 'c.id = a.checklist_id')
+               ->where('a.priority', 'medium')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          $actions_low = (int)$db->table('branding_actions as a')
+               ->join('branding_checklists as c', 'c.id = a.checklist_id')
+               ->where('a.priority', 'low')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          // Some older checklists stored "action-like" responses as checklist records rather than
+          // explicit rows in `branding_actions`. To help diagnose and correct missing action counts,
+          // compute a conservative "inferred actions" count from checklist records where the
+          // input name/value appears action-like (e.g. contains 'action' or 'priority' or has value
+          // of high/medium/low).
+          $inferred_actions_qb = $db->table('branding_checklist_records as r')
+               ->join('branding_checklists as c', 'c.id = r.branding_checklist_id')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : []);
+
+          // heuristic matching (case-insensitive): input_name contains 'action' OR contains 'priority' OR input_value in (high, medium, low)
+          // Use a conservative approach and a small raw clause for value matching to ensure compatibility across DB drivers
+          $inferred_actions_qb->groupStart()
+               ->like('r.input_name', 'action')
+               ->orLike('r.input_name', 'priority')
+               ->orWhere("LOWER(r.input_value) IN ('high','medium','low')")
+               ->groupEnd();
+
+          $inferred_actions = (int)$inferred_actions_qb->countAllResults(false);
+
+          // Also compute inferred counts by priority where possible (value is high/medium/low)
+          $inferred_high = (int)$db->table('branding_checklist_records as r')
+               ->join('branding_checklists as c', 'c.id = r.branding_checklist_id')
+               ->where("LOWER(r.input_value) = 'high'")
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          $inferred_medium = (int)$db->table('branding_checklist_records as r')
+               ->join('branding_checklists as c', 'c.id = r.branding_checklist_id')
+               ->where("LOWER(r.input_value) = 'medium'")
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          $inferred_low = (int)$db->table('branding_checklist_records as r')
+               ->join('branding_checklists as c', 'c.id = r.branding_checklist_id')
+               ->where("LOWER(r.input_value) = 'low'")
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          // Additional heuristic: certain subsection input names are used to store action texts
+          // e.g. 'immediate_action*' -> high priority, 'short_term_action*' -> medium, 'long_term_action*' -> low.
+          // Count records with those name patterns and attribute them to inferred priority buckets.
+          $extra_high = (int)$db->table('branding_checklist_records as r')
+               ->join('branding_checklists as c', 'c.id = r.branding_checklist_id')
+               ->like('r.input_name', 'immediate')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          $extra_medium = (int)$db->table('branding_checklist_records as r')
+               ->join('branding_checklists as c', 'c.id = r.branding_checklist_id')
+               ->groupStart()
+               ->like('r.input_name', 'short')
+               ->orLike('r.input_name', 'short_term')
+               ->groupEnd()
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          $extra_low = (int)$db->table('branding_checklist_records as r')
+               ->join('branding_checklists as c', 'c.id = r.branding_checklist_id')
+               ->like('r.input_name', 'long')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->where($branch !== '' ? ['c.branch_id' => $branch] : [])
+               ->countAllResults(false);
+
+          // Add the extra heuristic counts into the inferred priority counts (avoid double counting if both conditions already matched)
+          $inferred_high += $extra_high;
+          $inferred_medium += $extra_medium;
+          $inferred_low += $extra_low;
+
+          // Add inferred priority counts to totals (non-destructive) and provide original DB-only counts too
+          $actions_total_db = $actions_total;
+          $actions_high_db = $actions_high;
+          $actions_medium_db = $actions_medium;
+          $actions_low_db = $actions_low;
+
+          $actions_high = $actions_high + $inferred_high;
+          $actions_medium = $actions_medium + $inferred_medium;
+          $actions_low = $actions_low + $inferred_low;
+
+          $actions_total = $actions_total + $inferred_actions;
+
+          // Recent activity: latest checklists (most recent date_of_visit)
+          $recent = $db->table('branding_checklists as c')
+               ->select('c.id, c.centre_name as title, c.date_of_visit as date')
+               ->where('c.date_of_visit >=', $startDate)
+               ->where('c.date_of_visit <=', $endDate)
+               ->orderBy('c.date_of_visit', 'desc')
+               ->limit(10)
+               ->get()->getResultArray();
+
+          return [
+               'total_visits' => $total_visits,
+               'photos_count' => $photos,
+               // keep DB-only counts available under *_db and set the top-level totals to include inferred items so UI shows corrected numbers
+               'actions_total_db' => $actions_total_db,
+               'actions_total' => $actions_total,
+               'actions_high_db' => $actions_high_db,
+               'actions_high' => $actions_high,
+               'actions_medium_db' => $actions_medium_db,
+               'actions_medium' => $actions_medium,
+               'actions_low_db' => $actions_low_db,
+               'actions_low' => $actions_low,
+               'actions_inferred' => $inferred_actions,
+               'actions_inferred_high' => $inferred_high,
+               'actions_inferred_medium' => $inferred_medium,
+               'actions_inferred_low' => $inferred_low,
+               'checklists' => $total_visits,
+               'recent' => $recent
+          ];
      }
      // Sections/Subsections helpers
      public function getSections()

@@ -82,8 +82,12 @@ abstract class BaseController extends Controller
           // Avoid nullsafe operator (PHP <8.0) to prevent T_OBJECT_OPERATOR parse errors.
           $authHeaderObj = $this->request->header('Authorization');
           $authorizationHeader = $authHeaderObj ? $authHeaderObj->getValue() : null;
-          $jwtService = new JwtService();
-          $result = $jwtService->validateToken($authorizationHeader);
+          try {
+               $jwtService = new JwtService();
+               $result = $jwtService->validateToken($authorizationHeader);
+          } catch (\Throwable $e) {
+               return $this->response->setJSON(['error' => $e->getMessage()])->setStatusCode(500);
+          }
 
           if (isset($result['error'])) {
                return $this->response->setJSON(['error' => $result['error']])->setStatusCode($result['status'] ?? 401);

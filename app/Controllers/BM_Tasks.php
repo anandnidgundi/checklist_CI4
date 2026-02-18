@@ -7,6 +7,7 @@ use CodeIgniter\API\ResponseTrait;
 use App\Models\DeptModel;
 use App\Models\MtModel;
 use App\Models\BM_TasksModel;
+use App\Models\LogsModel;
 use App\Services\JwtService;
 
 class BM_Tasks extends BaseController
@@ -93,6 +94,27 @@ class BM_Tasks extends BaseController
                if (!$insertId) {
                     return $this->respond(['status' => false, 'message' => 'Failed to add task'], 500);
                }
+
+               // Log the create action
+               try {
+                    $lm = new LogsModel();
+                    $lm->insertLog([
+                         'uri' => $this->request->getURI()->getPath(),
+                         'method' => $this->request->getMethod(),
+                         'params' => $jsonData,
+                         'ip_address' => $this->request->getIPAddress(),
+                         'time' => time(),
+                         'authorized' => 'Y',
+                         'response_code' => 201,
+                         'action' => 'addBM_Task',
+                         'entity_type' => 'bm_task',
+                         'entity_id' => (string) $insertId,
+                         'user_id' => $emp_code,
+                    ]);
+               } catch (\Exception $e) {
+                    log_message('error', 'BM task log failed: ' . $e->getMessage());
+               }
+
                return $this->respond(['status' => true, 'message' => 'Morning Task added successfully.', 'data' => $insertId], 201);
           }
           // If branch is not valid, return an error
@@ -168,6 +190,27 @@ class BM_Tasks extends BaseController
                if (!$updateResult) {
                     return $this->respond(['status' => false, 'message' => 'Failed to update task'], 500);
                }
+
+               // Log the edit action
+               try {
+                    $lm = new LogsModel();
+                    $lm->insertLog([
+                         'uri' => $this->request->getURI()->getPath(),
+                         'method' => $this->request->getMethod(),
+                         'params' => $jsonData,
+                         'ip_address' => $this->request->getIPAddress(),
+                         'time' => time(),
+                         'authorized' => 'Y',
+                         'response_code' => 200,
+                         'action' => 'editBM_Task',
+                         'entity_type' => 'bm_task',
+                         'entity_id' => (string) $id,
+                         'user_id' => $emp_code,
+                    ]);
+               } catch (\Exception $e) {
+                    log_message('error', 'BM task edit log failed: ' . $e->getMessage());
+               }
+
                // Update subquestions if present
                if (isset($jsonData->subquestions)) {
                     foreach ($jsonData->subquestions as $subq) {
@@ -451,23 +494,23 @@ class BM_Tasks extends BaseController
           $user = $userDetails->emp_code;
           $role = $userDetails->role;
           $bmTasksModel = new BM_TasksModel();
-          
+
           $requestData = $this->request->getJSON();
           log_message('error', 'Request Data: ' . json_encode($requestData));
-          
+
           $selectedMonth = $requestData->month ?? date('Y-m');
           $searchText = $requestData->search ?? '';
-          
+
           // Handle selected branch - pass the actual value or '0'
-          $selectedBranch = (!empty($requestData->branch_id) && $requestData->branch_id != '0') 
-               ? $requestData->branch_id 
+          $selectedBranch = (!empty($requestData->branch_id) && $requestData->branch_id != '0')
+               ? $requestData->branch_id
                : '0';
-          
+
           $selectedCluster = (!empty($requestData->cluster_id)) ? $requestData->cluster_id : '0';
           $selectedZone = (!empty($requestData->zone_id)) ? $requestData->zone_id : '0';
           $selectedDate = (!empty($requestData->selectedDate)) ? $requestData->selectedDate : '';
           $selectedToDate = (!empty($requestData->selectedToDate)) ? $requestData->selectedToDate : '';
-          
+
           $mtDetails = $bmTasksModel->getBM_TaskListForAdmin(
                $role,
                $user,
@@ -479,7 +522,7 @@ class BM_Tasks extends BaseController
                $selectedToDate,
                $searchText
           );
-          
+
           if ($mtDetails) {
                return $this->respond([
                     'status' => true,

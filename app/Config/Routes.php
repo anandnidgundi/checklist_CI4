@@ -143,8 +143,7 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "deleteCluster", "Home::deleteCluster", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "clusterMapping", "Home::clusterMapping", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getBranchDetails", "Home::getBranchDetails", ['filter' => 'authFilter']);
-     // New: detailed branch info (uses secondary DB when available)
-     $routes->match(['GET', 'options'], "branch/(:num)", "BranchController::getBranchDetails/$1", ['filter' => 'authFilter']);
+
      $routes->match(['POST', 'options'], "editBranchDetails", "Home::editBranchDetails", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "addNewBranch", "Home::addNewBranch", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "deleteBranch", "Home::deleteBranch", ['filter' => 'authFilter']);
@@ -423,4 +422,7 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      // Logs API (admin)
      $routes->match(['POST', 'options'], "logs", "LogsController::addLog", ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], "logs", "LogsController::list", ['filter' => 'authFilter']);
+
+     // New: detailed branch info (uses secondary DB when available)
+     $routes->match(['GET', 'options'], "newBranchDetails/(:num)", "BranchController::getBranchDetails/$1", ['filter' => 'authFilter']);
 });

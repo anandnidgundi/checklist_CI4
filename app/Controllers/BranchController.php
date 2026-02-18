@@ -2,8 +2,6 @@
 
 namespace App\Controllers;
 
-use App\Controllers\BaseController;
-use App\Models\BranchModel;
 use CodeIgniter\API\ResponseTrait;
 use CodeIgniter\HTTP\ResponseInterface;
 use App\Services\JwtService;
@@ -18,39 +16,25 @@ class BranchController extends BaseController
       */
      public function getBranchDetails($id)
      {
-          // debug: record arrival (will show in writable/logs)
-          $method = $this->request->getMethod();
-          $uri = (string) $this->request->getURI();
-          log_message('error', "BranchController::getBranchDetails - incoming request {$method} {$uri} id={$id} | Authorization present=" . (
-               $this->request->header('Authorization') ? 'yes' : 'no'
-          ));
-
           $auth = $this->validateAuthorization();
-          if ($auth instanceof ResponseInterface) {
-               log_message('error', 'BranchController::getBranchDetails - authorization failed or short-circuited');
-               return $auth;
-          }
+          if ($auth instanceof ResponseInterface) return $auth;
 
-          $id = is_numeric($id) ? (int) $id : 0;
-          if ($id <= 0) {
-               log_message('error', 'BranchController::getBranchDetails - invalid id');
+          // Accept branch id as-is (allow zero-padded strings like '001').
+          $idRaw = is_scalar($id) ? trim((string) $id) : '';
+          if ($idRaw === '') {
                return $this->respond(['status' => false, 'message' => 'Invalid branch id'], 400);
           }
 
-          $bm = new BranchModel();
-          $data = $bm->getBranchDetails($id);
-
+          /** @var \App\Models\BranchModel $bm */
+          $bm = new \App\Models\BranchModel();
+          $data = $bm->getBranchDetails($idRaw);
           if ($data) {
-               // mark response so client can detect controller hit even if body gets transformed
-               $this->response->setHeader('X-Branch-Found', '1');
-               log_message('error', 'BranchController::getBranchDetails - returning data for id=' . $id);
                return $this->respond(['status' => true, 'data' => $data], 200);
           }
 
-          $this->response->setHeader('X-Branch-Found', '0');
-          log_message('error', 'BranchController::getBranchDetails - branch not found id=' . $id);
           return $this->respond(['status' => false, 'message' => 'Branch Detail not found'], 404);
      }
+
      private function validateAuthorization()
      {
           if (!class_exists('App\\Services\\JwtService')) {

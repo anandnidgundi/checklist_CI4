@@ -12,6 +12,61 @@ class FileUpload extends BaseController
 {
      use ResponseTrait;
 
+     private function compressImageInPlace(string $path, string $mime): void
+     {
+          if (!is_file($path)) return;
+          if (!extension_loaded('gd')) return;
+
+          $mime = strtolower(trim($mime));
+          if (!in_array($mime, ['image/jpeg', 'image/jpg', 'image/png'], true)) return;
+
+          $info = @getimagesize($path);
+          if (!$info || empty($info[0]) || empty($info[1])) return;
+
+          $srcW = (int) $info[0];
+          $srcH = (int) $info[1];
+          if ($srcW <= 0 || $srcH <= 0) return;
+
+          $maxDim = 1920;
+          $scale = min(1.0, $maxDim / max($srcW, $srcH));
+          $dstW = max(1, (int) round($srcW * $scale));
+          $dstH = max(1, (int) round($srcH * $scale));
+
+          $src = null;
+          if ($mime === 'image/png') {
+               $src = @imagecreatefrompng($path);
+          } else {
+               $src = @imagecreatefromjpeg($path);
+          }
+          if (!$src) return;
+
+          $dst = imagecreatetruecolor($dstW, $dstH);
+          if (!$dst) {
+               imagedestroy($src);
+               return;
+          }
+
+          if ($mime === 'image/png') {
+               imagealphablending($dst, false);
+               imagesavealpha($dst, true);
+               $transparent = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+               imagefilledrectangle($dst, 0, 0, $dstW, $dstH, $transparent);
+          }
+
+          imagecopyresampled($dst, $src, 0, 0, 0, 0, $dstW, $dstH, $srcW, $srcH);
+
+          if ($mime === 'image/png') {
+               // 0 (no compression) .. 9 (max compression)
+               @imagepng($dst, $path, 6);
+          } else {
+               // 0..100
+               @imagejpeg($dst, $path, 75);
+          }
+
+          imagedestroy($src);
+          imagedestroy($dst);
+     }
+
 
      // {
      //     helper(['form', 'url']);
@@ -237,20 +292,39 @@ class FileUpload extends BaseController
                // Move file to secure directory
                $file->move($uploadPath, $newFileName);
 
+               $movedPath = rtrim($uploadPath, '/\\') . DIRECTORY_SEPARATOR . $newFileName;
+               $mime = '';
+               if (is_file($movedPath)) {
+                    try {
+                         $mime = (string) (new \CodeIgniter\Files\File($movedPath))->getMimeType();
+                    } catch (\Throwable $e) {
+                         $mime = '';
+                    }
+               }
+               if ($mime === '') {
+                    $mime = (string) $file->getClientMimeType();
+               }
+               if (in_array($mime, ['image/jpeg', 'image/png'], true)) {
+                    $this->compressImageInPlace($movedPath, $mime);
+               }
+
+               $finalSize = is_file($movedPath) ? (int) @filesize($movedPath) : (int) $file->getSize();
+
                // File metadata storage (extended)
                $fileData = [
-                    'file_name' => htmlspecialchars(trim($newFileName), ENT_QUOTES, 'UTF-8'),
-                    'original_name' => htmlspecialchars($file->getClientName(), ENT_QUOTES, 'UTF-8'),
-                    'mime_type' => htmlspecialchars($file->getClientMimeType(), ENT_QUOTES, 'UTF-8'),
-                    'file_size' => (int)$file->getSize(),
-                    'mid' => htmlspecialchars($this->request->getPost('mid'), ENT_QUOTES, 'UTF-8'),
-                    'nid' => htmlspecialchars($this->request->getPost('nid'), ENT_QUOTES, 'UTF-8'),
-                    'cm_mid' => htmlspecialchars($this->request->getPost('cm_mid'), ENT_QUOTES, 'UTF-8'),
-                    'cm_nid' => htmlspecialchars($this->request->getPost('cm_nid'), ENT_QUOTES, 'UTF-8'),
-                    'bmw_id' => htmlspecialchars($this->request->getPost('bmw_id'), ENT_QUOTES, 'UTF-8'),
-                    'hkr_id' => $this->request->getPost('hkr_id') ? (int)$this->request->getPost('hkr_id') : NULL,
-                    'emp_code' => htmlspecialchars($user, ENT_QUOTES, 'UTF-8'),
-                    'createdDTM' => date('Y-m-d H:i:s'),
+                    'file_name'   => htmlspecialchars(trim($newFileName), ENT_QUOTES, 'UTF-8'),
+                    'tour_id'     => htmlspecialchars($this->request->getPost('tour_id'), ENT_QUOTES, 'UTF-8'),
+                    'em_code'     => htmlspecialchars($user, ENT_QUOTES, 'UTF-8'),
+                    'mid'         => htmlspecialchars($this->request->getPost('mid'), ENT_QUOTES, 'UTF-8'),
+                    'nid'         => htmlspecialchars($this->request->getPost('nid'), ENT_QUOTES, 'UTF-8'),
+                    'cm_mid'      => htmlspecialchars($this->request->getPost('cm_mid'), ENT_QUOTES, 'UTF-8'),
+                    'cm_nid'      => htmlspecialchars($this->request->getPost('cm_nid'), ENT_QUOTES, 'UTF-8'),
+                    'service_id'  => htmlspecialchars($this->request->getPost('service_id'), ENT_QUOTES, 'UTF-8'),
+                    'bmw_id'      => htmlspecialchars($this->request->getPost('bmw_id'), ENT_QUOTES, 'UTF-8'),
+                    'diesel_id'   => htmlspecialchars($this->request->getPost('diesel_id'), ENT_QUOTES, 'UTF-8'),
+                    'power_id'    => htmlspecialchars($this->request->getPost('power_id'), ENT_QUOTES, 'UTF-8'),
+                    'hkr_id'      => htmlspecialchars($this->request->getPost('hkr_id'), ENT_QUOTES, 'UTF-8'),
+                    'createdDTM'  => date('Y-m-d H:i:s'),
                ];
 
                // Save file details in the database
@@ -654,11 +728,24 @@ class FileUpload extends BaseController
           }
           // Get the Authorization header and log it
           $authorizationHeader = $this->request->getHeader('Authorization') ? $this->request->getHeader('Authorization')->getValue() : null;
+          if (!$authorizationHeader) {
+               $token = $this->request->getGet('token');
+               if (is_string($token)) {
+                    $token = trim($token);
+                    if ($token !== '') {
+                         $authorizationHeader = 'Bearer ' . $token;
+                    }
+               }
+          }
           //log_message( 'info', 'Authorization header: ' . $authorizationHeader );
 
           // Create an instance of JwtService and validate the token
-          $jwtService = new JwtService();
-          $result = $jwtService->validateToken($authorizationHeader);
+          try {
+               $jwtService = new JwtService();
+               $result = $jwtService->validateToken($authorizationHeader);
+          } catch (\Throwable $e) {
+               return $this->respond(['error' => $e->getMessage()], 500);
+          }
 
           // Handle token validation errors
           if (isset($result['error'])) {

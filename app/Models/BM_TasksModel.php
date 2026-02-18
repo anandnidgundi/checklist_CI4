@@ -253,6 +253,45 @@ class BM_TasksModel extends Model
           }
           return [];
      }
+
+     // Get latest task (last entry) per branch for a given month
+     public function getLatestTasksByBranch($selectedMonth, $branchIds = [])
+     {
+          $db2 = \Config\Database::connect('default');
+          $params = [$selectedMonth];
+
+          // Subquery: max(createdDTM) per branch within the month
+          $subBuilder = $db2->table('bm_tasks')
+               ->select('branch, MAX(createdDTM) as maxCreated')
+               ->where('DATE_FORMAT(taskDate, "%Y-%m")', $selectedMonth)
+               ->groupBy('branch');
+
+          if (!empty($branchIds)) {
+               $subBuilder->whereIn('branch', $branchIds);
+          }
+
+          $subSql = $subBuilder->getCompiledSelect();
+
+          // Join to fetch full task rows matching the max createdDTM per branch
+          $sql = "SELECT m.mid, m.branch, m.taskDate, m.createdDTM, m.created_by FROM bm_tasks m JOIN ({$subSql}) sub ON m.branch = sub.branch AND m.createdDTM = sub.maxCreated ORDER BY m.branch";
+
+          $results = $db2->query($sql, $params)->getResultArray();
+
+          // Enrich with branch name and creator name
+          $defaultDB = \Config\Database::connect('secondary');
+          foreach ($results as &$r) {
+               $branchRow = $defaultDB->table('Branches')->select('SysField as branch_name')->where('id', $r['branch'])->get()->getRowArray();
+               $r['branch_name'] = $branchRow['branch_name'] ?? '';
+
+               $emp = $defaultDB->table('new_emp_master')->select('fname, lname')->where('emp_code', $r['created_by'])->get()->getRowArray();
+               $r['created_by_name'] = trim(($emp['fname'] ?? '') . ' ' . ($emp['lname'] ?? ''));
+
+               // Add formatted task date (DD-MM-YYYY) for UI display, keep original taskDate for compatibility
+               $r['task_date'] = (!empty($r['taskDate']) && strtotime($r['taskDate']) !== false) ? date('d-m-Y', strtotime($r['taskDate'])) : '';
+          }
+
+          return $results;
+     }
      // public function getBM_TaskDetailsByMid($mid, $role, $user)
      // {
      //     $db2 = \Config\Database::connect('secondary'); // Secondary DB for task-related data

@@ -44,9 +44,9 @@ class BrandingChecklistController extends BaseController
      public function create()
      {
           $user = $this->validateAuthorizationNew();
-          // Only SUPER_ADMIN and BRANDING_AUDITOR are allowed to create new branding checklists
+          // Only SUPER_ADMIN, BRANDING_AUDITOR and AGM_BRANDING are allowed to create new branding checklists
           $role = $user->role ?? ($user->role ?? '');
-          if (!in_array($role, ['SUPER_ADMIN', 'BRANDING_AUDITOR'])) {
+          if (!in_array($role, ['SUPER_ADMIN', 'BRANDING_AUDITOR', 'AGM_BRANDING'])) {
                return $this->respond(['message' => 'Forbidden'], 403);
           }
 
@@ -83,11 +83,11 @@ class BrandingChecklistController extends BaseController
      {
           $user = $this->validateAuthorizationNew();
           $role = $user->role ?? ($user->role ?? '');
-          if (!in_array($role, ['SUPER_ADMIN', 'ADMIN', 'AUDIT', 'HK_SUPERVISOR', 'BRANDING_AUDITOR'])) {
+          if (!in_array($role, ['SUPER_ADMIN', 'ADMIN', 'AUDIT', 'HK_SUPERVISOR', 'BRANDING_AUDITOR', 'AGM_BRANDING'])) {
                return $this->respond(['message' => 'Forbidden'], 403);
           }
-          // If BRANDING_AUDITOR, allow updates only on checklists they created
-          if ($role === 'BRANDING_AUDITOR') {
+          // If BRANDING_AUDITOR or AGM_BRANDING, allow updates only on checklists they created
+          if (in_array($role, ['BRANDING_AUDITOR', 'AGM_BRANDING'], true)) {
                $chk = $this->model->find((int)$id);
                if (!$chk) return $this->respond(['message' => 'Not found'], 404);
                $creator = $chk['created_by'] ?? null;
@@ -108,6 +108,31 @@ class BrandingChecklistController extends BaseController
 
           try {
                $ok = $this->model->updateChecklist((int)$id, $input);
+
+               // Process deleted_photos if provided (array of filenames)
+               if (!empty($input['deleted_photos']) && is_array($input['deleted_photos'])) {
+                    try {
+                         $filenames = [];
+                         // Support object mapping or flat arrays
+                         foreach ($input['deleted_photos'] as $k => $v) {
+                              if (is_array($v)) {
+                                   foreach ($v as $fn) {
+                                        $filenames[] = (string)$fn;
+                                   }
+                              } else {
+                                   $filenames[] = (string)$v;
+                              }
+                         }
+                         $filenames = array_values(array_filter(array_map('trim', $filenames)));
+                         if (!empty($filenames)) {
+                              $this->model->deletePhotos((int)$id, $filenames);
+                         }
+                    } catch (\Throwable $e) {
+                         // ignore deletion errors (non-fatal)
+                         log_message('error', 'Failed to delete photos for checklist ' . (int)$id . ': ' . $e->getMessage());
+                    }
+               }
+
                return $this->respond(['message' => 'Updated', 'updated' => (bool)$ok], 200);
           } catch (\Exception $e) {
                return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
@@ -234,14 +259,14 @@ class BrandingChecklistController extends BaseController
           // Auth + permission checks (same rules as other endpoints)
           $user = $this->validateAuthorizationNew();
           $role = $user->role ?? ($user->role ?? '');
-          if (!in_array($role, ['SUPER_ADMIN', 'ADMIN', 'BRANDING_AUDITOR'])) {
+          if (!in_array($role, ['SUPER_ADMIN', 'ADMIN', 'BRANDING_AUDITOR', 'AGM_BRANDING'])) {
                return $this->respond(['message' => 'Forbidden'], 403);
           }
 
           // Ensure checklist exists and enforce BRANDING_AUDITOR ownership
           $chk = $this->model->find((int)$checklistId);
           if (!$chk) return $this->respond(['message' => 'Checklist not found'], 404);
-          if ($role === 'BRANDING_AUDITOR') {
+          if (in_array($role, ['BRANDING_AUDITOR', 'AGM_BRANDING'], true)) {
                $creator = $chk['created_by'] ?? null;
                $empCode = $user->emp_code ?? $user->username ?? null;
                if ($creator !== $empCode) return $this->respond(['message' => 'Forbidden'], 403);
@@ -405,6 +430,48 @@ class BrandingChecklistController extends BaseController
           try {
                $this->model->createSubSection($sectionId, $name);
                return $this->respondCreated(['message' => 'Created']);
+          } catch (\Exception $e) {
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     /**
+      * Dashboard counts endpoint (POST /api/Branding_DashboardCount)
+      * Accepts JSON: { branch: '', selectedMonth: 'YYYY-MM' } OR { branch: '', fromDate: 'YYYY-MM-DD', toDate: 'YYYY-MM-DD' }
+      */
+     public function dashboardCount()
+     {
+          $this->validateAuthorizationNew();
+          $input = $this->request->getJSON(true) ?: [];
+
+          $branch = isset($input['branch']) ? (string)$input['branch'] : '';
+
+          // Determine date range
+          $start = null;
+          $end = null;
+          if (!empty($input['selectedMonth'])) {
+               // expected format YYYY-MM
+               $parts = explode('-', (string)$input['selectedMonth']);
+               if (count($parts) >= 2) {
+                    $y = (int)$parts[0];
+                    $m = (int)$parts[1];
+                    $start = sprintf('%04d-%02d-01', $y, $m);
+                    $end = date('Y-m-t', strtotime($start));
+               }
+          } elseif (!empty($input['fromDate']) && !empty($input['toDate'])) {
+               $start = (string)$input['fromDate'];
+               $end = (string)$input['toDate'];
+          }
+
+          // Default to current month if not provided
+          if (empty($start) || empty($end)) {
+               $start = date('Y-m-01');
+               $end = date('Y-m-t');
+          }
+
+          try {
+               $data = $this->model->getDashboardCounts($branch, $start, $end);
+               return $this->respond(['data' => $data], 200);
           } catch (\Exception $e) {
                return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
           }

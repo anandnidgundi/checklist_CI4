@@ -38,7 +38,7 @@ class Database extends Config
                     'hostname' => $e('database.default.hostname', '127.0.0.1'),
                     'username' => $e('database.default.username', 'root'),
                     'password' => $e('database.default.password', ''),
-                    'database' => $e('database.default.database', ''),
+                    'database' => $e('database.default.database', 'vdcapp2_bmcmchecklist'),
                     'DBDriver' => $e('database.default.DBDriver', 'MySQLi'),
                     'DBPrefix' => '',
                     'pConnect' => false,
