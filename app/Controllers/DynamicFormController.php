@@ -421,14 +421,38 @@ class DynamicFormController extends BaseController
                     log_message('error', 'DynamicForm::create log failed: ' . $e->getMessage());
                }
 
-               return $this->respondCreated([
+               $responsePayload = [
                     'status' => true,
                     'message' => 'Saved',
                     'inserted' => count($rows),
                     'created_dtm' => $createdDtm,
                     'submission_id' => $useSubmissionTable ? $numericSubmissionId : $submissionUuid,
                     'submission_uuid' => $submissionUuid,
-               ]);
+               ];
+
+               // Send response immediately, then attempt background email trigger (best-effort)
+               $response = $this->respondCreated($responsePayload);
+               try {
+                    if (function_exists('fastcgi_finish_request')) {
+                         fastcgi_finish_request();
+                    }
+               } catch (\Throwable $e) {
+                    // ignore - continue to best-effort email send
+               }
+
+               try {
+                    // Trigger email (non-blocking, failures logged)
+                    try {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] create_invoking_trigger: form_id={$formId} submission=" . ($responsePayload['submission_id'] ?? 'NULL') . " header=" . json_encode($header) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                         // ignore logging failures
+                    }
+                    $this->triggerSubmissionEmailOnSave((int)$formId, $responsePayload['submission_id'], $header, $createdDtm, $payload ?? []);
+               } catch (\Throwable $e) {
+                    log_message('error', 'DynamicForm::create trigger email failed: ' . $e->getMessage());
+               }
+
+               return $response;
           } catch (\Throwable $e) {
                $db->transRollback();
                return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
@@ -795,9 +819,517 @@ class DynamicFormController extends BaseController
                     log_message('error', 'DynamicForm::update log failed: ' . $e->getMessage());
                }
 
-               return $this->respond(['message' => 'Updated', 'submission_id' => $sid], 200);
+               $respPayload = ['message' => 'Updated', 'submission_id' => $sid];
+
+               // Respond immediately then try background email trigger (best-effort)
+               $response = $this->respond($respPayload, 200);
+               try {
+                    if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+               } catch (\Throwable $e) {
+               }
+
+               try {
+                    $formIdForTrigger = (int) ($payload['form_id'] ?? 0);
+                    try {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] update_invoking_trigger: form_id={$formIdForTrigger} submission={$sid} header=" . json_encode($header ?? null) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                         // ignore logging failures
+                    }
+                    $this->triggerSubmissionEmailOnSave($formIdForTrigger, $sid, $header ?? null, date('Y-m-d H:i:s'), $payload ?? []);
+               } catch (\Throwable $e) {
+                    log_message('error', 'DynamicForm::update trigger email failed: ' . $e->getMessage());
+               }
+
+               return $response;
           } catch (\Throwable $e) {
                $db->transRollback();
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     /**
+      * Best-effort background email trigger for submissions that are bound to an email template.
+      * - Finds email template by `form_id` (if any)
+      * - Builds a small variables map for template replacement
+      * - Attaches an uploaded frontend-generated PDF when `pdf_file_id` is provided in payload/header
+      * - Sends to branch emails (branch_manager_email + branch_email) and lets the template's CCs apply
+      * NOTE: failures are logged and do not affect submission success.
+      */
+     private function triggerSubmissionEmailOnSave(int $formId, $submissionId, $header = null, $createdDtm = null, array $payload = [])
+     {
+          try {
+               if ($formId <= 0) return;
+
+               $db = \Config\Database::connect();
+
+               // Find template bound to this form_id
+               $tmpl = $db->table('email_templates')->where('form_id', $formId)->get()->getRowArray();
+               if (!$tmpl) return; // nothing to do
+
+               // Debug: record trigger invocation and template lookup
+               try {
+                    $dbg = "[" . date('Y-m-d H:i:s') . "] triggerSubmissionEmailOnSave called: form_id={$formId} submission={$submissionId} template_event_key=" . ($tmpl['event_key'] ?? 'NULL') . "\n";
+                    file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', $dbg, FILE_APPEND);
+               } catch (\Throwable $__dbg) {
+               }
+
+               // Short-lived dedupe lock: avoid duplicate sends when create() triggers and an immediate update() (PDF attach)
+               $forceSend = !empty($payload['force']);
+               try {
+                    $cacheKey = 'email_send_lock_' . (int)$formId . '_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)$submissionId) . '_' . ($tmpl['event_key'] ?? 'generic');
+                    $cache = \Config\Services::cache();
+                    if (! $forceSend && $cache->get($cacheKey)) {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] dedupe_skip: form_id={$formId} submission={$submissionId} template=" . ($tmpl['event_key'] ?? 'NULL') . "\n", FILE_APPEND);
+                         return;
+                    }
+                    // mark lock for 2 minutes
+                    $cache->save($cacheKey, 1, 120);
+               } catch (\Throwable $__cacheErr) {
+                    // ignore cache/storage failures — best-effort only
+               }
+
+               // Prepare variables for template replacement
+               $vars = [];
+               $vars['submission_id'] = (string)$submissionId;
+               $vars['submission_uuid'] = is_string($submissionId) ? $submissionId : (string)$submissionId;
+               $vars['form_id'] = (int)$formId;
+               $vars['created_dtm'] = $createdDtm ?? date('Y-m-d H:i:s');
+
+               if (is_array($header)) {
+                    // common header fields we pass through
+                    $vars['branch_id'] = $header['branch_id'] ?? null;
+                    $vars['branch_manager'] = $header['branch_manager'] ?? null;
+                    // expose emails from header (if client included them) so templates/EmailController can use them
+                    $vars['branch_manager_email'] = $header['branch_manager_email'] ?? null;
+                    $vars['branch_email'] = $header['branch_email'] ?? null;
+                    $vars['contact'] = $header['contact'] ?? null;
+                    $vars['centre_name'] = $header['centre_name'] ?? $header['branch_name'] ?? null;
+
+                    // provide template-friendly names / aliases
+                    $bmRaw = $header['branch_manager'] ?? null;
+                    $vars['branch_manager_name'] = $bmRaw ? preg_replace('/\s*\([^)]*\)$/', '', trim((string)$bmRaw)) : null;
+                    $vars['branch_name'] = $vars['centre_name'] ?? ($header['branch_name'] ?? null);
+                    // 'name' alias used in some templates
+                    $vars['name'] = $vars['branch_manager_name'] ?? $vars['branch_manager'] ?? null;
+
+                    // include auditor and pdf filename so templates can reference them
+                    $vars['audited_by'] = isset($header['audited_by']) ? trim((string)$header['audited_by']) : null;
+                    $vars['pdf_file_name'] = $header['pdf_file_name'] ?? null;
+               }
+
+               // Check for frontend-uploaded PDF file id (frontend should upload PDF via FileUpload::uploadFile)
+               $pdfFileId = null;
+               if (!empty($payload['pdf_file_id'])) {
+                    $pdfFileId = (int)$payload['pdf_file_id'];
+               } elseif (is_array($header) && !empty($header['pdf_file_id'])) {
+                    $pdfFileId = (int)$header['pdf_file_id'];
+               }
+
+               $attachmentPath = null;
+               if ($pdfFileId && $pdfFileId > 0) {
+                    try {
+                         // Robust lookup: check which identifier columns exist on `files` before querying
+                         $db = \Config\Database::connect();
+
+                         $hasFileId = $this->tableHasColumn('files', 'file_id');
+                         $hasFid = $this->tableHasColumn('files', 'f_id');
+                         $hasId = $this->tableHasColumn('files', 'id');
+
+                         $f = null;
+                         if ($hasFileId || $hasFid || $hasId) {
+                              $qb = $db->table('files')->select('*');
+                              $qb->groupStart();
+                              if ($hasFileId) {
+                                   $qb->where('file_id', $pdfFileId);
+                              }
+                              if ($hasFid) {
+                                   // use OR only if a previous condition was added
+                                   if ($hasFileId) $qb->orWhere('f_id', $pdfFileId);
+                                   else $qb->where('f_id', $pdfFileId);
+                              }
+                              if ($hasId) {
+                                   if ($hasFileId || $hasFid) $qb->orWhere('id', $pdfFileId);
+                                   else $qb->where('id', $pdfFileId);
+                              }
+                              $qb->groupEnd()->limit(1);
+                              $f = $qb->get()->getRowArray();
+                         } else {
+                              // defensive: files table doesn't have expected id columns
+                              log_message('warning', 'triggerSubmissionEmailOnSave: files table missing file_id/f_id/id columns');
+                         }
+
+                         // Debug: record resolved file row (if any)
+                         try {
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] resolved_file_row_for_pdf_file_id={$pdfFileId} row=" . json_encode($f) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+
+                         if ($f) {
+                              // If DB row exists but isn't linked to this form/submission, link it (best-effort)
+                              try {
+                                   $pkCol = null;
+                                   if (isset($f['file_id'])) $pkCol = 'file_id';
+                                   elseif (isset($f['f_id'])) $pkCol = 'f_id';
+                                   elseif (isset($f['id'])) $pkCol = 'id';
+
+                                   $toUpdate = [];
+                                   if ($pkCol && empty($f['form_id']) && !empty($formId)) $toUpdate['form_id'] = (int)$formId;
+                                   // submissionId may be string (uuid) or numeric; prefer numeric when possible
+                                   if ($pkCol && empty($f['submission_id']) && ctype_digit((string)$submissionId)) $toUpdate['submission_id'] = (int)$submissionId;
+
+                                   if (!empty($toUpdate) && $pkCol) {
+                                        try {
+                                             $db->table('files')->where($pkCol, $f[$pkCol])->update($toUpdate);
+                                        } catch (\Throwable $__upd) {/* ignore */
+                                        }
+                                   }
+                              } catch (\Throwable $__link) {
+                                   // ignore linking failures — non-critical
+                              }
+
+                              $fileName = $f['file_name'] ?? $f['filename'] ?? $f['name'] ?? null;
+                              $pathCol = $f['path'] ?? $f['full_path'] ?? null;
+
+                              if ($fileName) {
+                                   $candidate = WRITEPATH . 'uploads/secure_files/' . $fileName;
+                                   if (is_file($candidate)) {
+                                        $attachmentPath = $candidate;
+                                   }
+                              }
+
+                              // Fallback: if file stored with absolute path in DB
+                              if (!$attachmentPath && $pathCol && is_file($pathCol)) {
+                                   $attachmentPath = $pathCol;
+                              }
+                         }
+
+                         // Secondary fallback: frontend may include `pdf_file_name` in submission header — prefer that when DB row is missing
+                         if (!$attachmentPath && is_array($header) && !empty($header['pdf_file_name'])) {
+                              $candidateHeader = WRITEPATH . 'uploads/secure_files/' . basename($header['pdf_file_name']);
+                              if (is_file($candidateHeader)) {
+                                   $attachmentPath = $candidateHeader;
+                                   try {
+                                        file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] attached_via_header_pdf_file_name={$candidateHeader}\n", FILE_APPEND);
+                                   } catch (\Throwable $__dbg) {
+                                   }
+                              }
+                         }
+                    } catch (\Throwable $e) {
+                         log_message('error', 'triggerSubmissionEmailOnSave: failed to resolve pdf file: ' . $e->getMessage());
+                    }
+               }
+
+               // If a pdf_file_id was provided but we couldn't find a file on disk, log diagnostic details to help debugging
+               if (!empty($pdfFileId) && !$attachmentPath) {
+                    try {
+                         $diag = [
+                              'pdf_file_id' => $pdfFileId,
+                              'header_pdf_file_name' => $header['pdf_file_name'] ?? null,
+                              'resolved_db_row' => isset($f) ? $f : null,
+                              'candidate_header_path_exists' => (!empty($header['pdf_file_name']) && is_file(WRITEPATH . 'uploads/secure_files/' . basename($header['pdf_file_name']))) ? 'Y' : 'N',
+                              'secure_dir' => WRITEPATH . 'uploads/secure_files/',
+                         ];
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] pdf_attach_missing: " . json_encode($diag) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+
+                    // FALLBACK: try to find most-recent PDF for this form/submission (helps when header.pdf_file_name was null)
+                    try {
+                         $cols = [];
+                         try {
+                              $cols = $db->getFieldNames('files');
+                         } catch (\Throwable $__c) {
+                              $cols = [];
+                         }
+                         $qb = $db->table('files')->select('*');
+                         $usedCond = false;
+                         if (in_array('form_id', $cols, true) && $formId > 0) {
+                              $qb->where('form_id', (int)$formId);
+                              $usedCond = true;
+                         }
+                         if (in_array('submission_id', $cols, true) && ctype_digit((string)$submissionId)) {
+                              $qb->where('submission_id', (int)$submissionId);
+                              $usedCond = true;
+                         }
+                         // prefer filenames created by our frontend ('submission_*.pdf') when present
+                         if (in_array('file_name', $cols, true)) {
+                              $qb->like('file_name', 'submission_');
+                         }
+                         if ($usedCond) {
+                              // order by createdDTM or primary key as available
+                              if (in_array('createdDTM', $cols, true)) $qb->orderBy('createdDTM', 'DESC');
+                              elseif (in_array('created_at', $cols, true)) $qb->orderBy('created_at', 'DESC');
+                              elseif (in_array('file_id', $cols, true)) $qb->orderBy('file_id', 'DESC');
+                              $rowCandidate = $qb->limit(1)->get()->getRowArray();
+                              if ($rowCandidate) {
+                                   $candidateName = $rowCandidate['file_name'] ?? $rowCandidate['filename'] ?? null;
+                                   if ($candidateName) {
+                                        $candidatePath = WRITEPATH . 'uploads/secure_files/' . basename($candidateName);
+                                        if (is_file($candidatePath)) {
+                                             $attachmentPath = $candidatePath;
+                                             try {
+                                                  file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] pdf_attach_fallback_used candidate=" . basename($candidatePath) . "\n", FILE_APPEND);
+                                             } catch (\Throwable $__dbg) {
+                                             }
+                                        }
+                                   }
+                              }
+                         }
+                    } catch (\Throwable $__fb) {
+                         log_message('error', 'triggerSubmissionEmailOnSave fallback file lookup failed: ' . $__fb->getMessage());
+                    }
+               }
+
+               // Resolve branch emails (prefer branch lookup when branch_id present in header)
+               $recipients = [];
+               if (is_array($header) && !empty($header['branch_id'])) {
+                    try {
+                         $branchModel = model(\App\Models\BranchModel::class);
+                         $b = $branchModel->getBranchDetails($header['branch_id']);
+
+                         // Debug: record branch lookup result
+                         try {
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] branch_lookup: " . json_encode([$header['branch_id'], $b]) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+
+                         // expose branch emails into template variables (so sendTemplate can pick them up from $data)
+                         if (empty($vars['branch_manager_email']) && !empty($b['branch_manager_email'])) {
+                              $vars['branch_manager_email'] = $b['branch_manager_email'];
+                         }
+                         if (empty($vars['branch_email']) && !empty($b['branch_email'])) {
+                              $vars['branch_email'] = $b['branch_email'];
+                         }
+
+                         if (!empty($b['branch_manager_email'])) $recipients[] = ['email' => $b['branch_manager_email'], 'name' => $b['branch_manager_name'] ?? ''];
+                         if (!empty($b['branch_email'])) $recipients[] = ['email' => $b['branch_email'], 'name' => $b['branch_name'] ?? ''];
+                    } catch (\Throwable $e) {
+                         log_message('error', 'triggerSubmissionEmailOnSave: branch lookup failed: ' . $e->getMessage());
+                    }
+               }
+
+               // If no branch recipients found, attempt to use header 'to' like fields if provided
+               if (empty($recipients) && is_array($header)) {
+                    if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
+                         $recipients[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
+                    }
+                    if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
+                         $recipients[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
+                    }
+               }
+
+               // ALWAYS include explicit header-provided branch emails (frontend-supplied) in recipients so
+               // the frontend can force delivery to branch manager even when branch lookup returns other addresses.
+               if (is_array($header)) {
+                    $explicit = [];
+                    if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
+                         $explicit[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
+                    }
+                    if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
+                         $explicit[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
+                    }
+                    if (!empty($explicit)) {
+                         // merge and dedupe by email
+                         $all = array_merge($recipients, $explicit);
+                         $seen = [];
+                         $recipients = [];
+                         foreach ($all as $row) {
+                              $em = trim((string)($row['email'] ?? ''));
+                              if (! $em || ! filter_var($em, FILTER_VALIDATE_EMAIL)) continue;
+                              if (in_array($em, $seen, true)) continue;
+                              $seen[] = $em;
+                              $recipients[] = ['email' => $em, 'name' => $row['name'] ?? ''];
+                         }
+                    }
+               }
+
+               // Fallback: if still no recipients, try template's cc_emails (treat as primary recipients)
+               if (empty($recipients) && !empty($tmpl['cc_emails'])) {
+                    $parts = is_array($tmpl['cc_emails']) ? $tmpl['cc_emails'] : preg_split('/[,;\s]+/', (string) $tmpl['cc_emails']);
+                    foreach ($parts as $p) {
+                         $p = trim((string)$p);
+                         if ($p && filter_var($p, FILTER_VALIDATE_EMAIL)) {
+                              $recipients[] = ['email' => $p, 'name' => ''];
+                         }
+                    }
+                    try {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] fallback_to_template_ccs: " . json_encode($parts) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+               }
+
+               // Nothing to send to
+               if (empty($recipients)) {
+                    log_message('debug', "triggerSubmissionEmailOnSave: no recipients for form_id={$formId}, submission={$submissionId}");
+                    try {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] no_recipients_found template_ccs=" . ($tmpl['cc_emails'] ?? 'NULL') . " header=" . json_encode($header) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+                    return;
+               }
+
+               $emailController = new \App\Controllers\EmailController();
+               foreach ($recipients as $r) {
+                    $toEmail = trim((string)($r['email'] ?? ''));
+                    if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) continue;
+                    $toName = trim((string)($r['name'] ?? '')) ?: null;
+
+                    try {
+                         $res = $emailController->sendTemplate($tmpl['event_key'], $toEmail, $toName, $vars, null, null, $attachmentPath ? [$attachmentPath] : null);
+                         log_message('info', "triggerSubmissionEmailOnSave: template={$tmpl['event_key']} to={$toEmail} result={$res}");
+                         try {
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] send_attempt: to={$toEmail} res=" . substr((string)$res, 0, 200) . " attachment=" . ($attachmentPath ? basename($attachmentPath) : 'none') . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+                    } catch (\Throwable $e) {
+                         log_message('error', 'triggerSubmissionEmailOnSave: sendTemplate failed: ' . $e->getMessage());
+                         try {
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] send_failed: to={$toEmail} ex=" . $e->getMessage() . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+                    }
+               }
+          } catch (\Throwable $e) {
+               log_message('error', 'triggerSubmissionEmailOnSave: unexpected error: ' . $e->getMessage());
+          }
+     }
+
+     // Quick admin API: re-run the email trigger for an existing submission (best-effort)
+     // POST /api/dynamic-form/{id}/resend-email
+     public function resendEmail($submissionId)
+     {
+          $user = $this->validateAuthorizationNew();
+          if ($user instanceof \CodeIgniter\HTTP\ResponseInterface) return $user;
+
+          $sid = is_string($submissionId) ? trim($submissionId) : (string)$submissionId;
+          if ($sid === '') return $this->respond(['message' => 'submission_id required'], 400);
+
+          $db = \Config\Database::connect();
+          $useSubmissionTable = $this->usesSubmissionTable();
+
+          try {
+               $submission = null;
+               if ($useSubmissionTable && ctype_digit($sid)) {
+                    $submission = $db->table('form_submissions')->where('id', (int)$sid)->get()->getRowArray();
+               }
+               if (!$submission) {
+                    return $this->respond(['message' => 'Submission not found'], 404);
+               }
+
+               $formId = isset($submission['form_id']) ? (int)$submission['form_id'] : 0;
+               $header = null;
+               if (!empty($submission['header'])) {
+                    $h = $submission['header'];
+                    if (is_string($h)) $header = json_decode($h, true) ?: null;
+                    elseif (is_array($h)) $header = $h;
+               }
+
+               // Trigger (best-effort, non-blocking)
+               try {
+                    try {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] resendEmail_invoking_trigger: form_id={$formId} submission={$sid} header=" . json_encode($header) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                         // ignore logging failures
+                    }
+                    // Admin-initiated resend should bypass short TTL dedupe
+                    $this->triggerSubmissionEmailOnSave((int)$formId, $sid, $header, $submission['created_dtm'] ?? null, ['force' => true]);
+               } catch (\Throwable $e) {
+                    log_message('error', 'resendEmail trigger failed: ' . $e->getMessage());
+                    return $this->respond(['message' => 'Trigger failed', 'error' => $e->getMessage()], 500);
+               }
+
+               return $this->respond(['message' => 'Trigger scheduled'], 200);
+          } catch (\Throwable $e) {
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     // GET /api/dynamic-form/{id}/debug - admin helper to inspect a submission's header, attached pdf and branch lookup
+     public function debugSubmission($submissionId)
+     {
+          $user = $this->validateAuthorizationNew();
+          if ($user instanceof \CodeIgniter\HTTP\ResponseInterface) return $user;
+
+          $sid = is_string($submissionId) ? trim($submissionId) : (string)$submissionId;
+          if ($sid === '') return $this->respond(['message' => 'submission_id required'], 400);
+
+          $db = \Config\Database::connect();
+          $useSubmissionTable = $this->usesSubmissionTable();
+
+          try {
+               $submission = null;
+               if ($useSubmissionTable && ctype_digit($sid)) {
+                    $submission = $db->table('form_submissions')->where('id', (int)$sid)->get()->getRowArray();
+               }
+               if (!$submission) return $this->respond(['message' => 'Submission not found'], 404);
+
+               $header = null;
+               if (!empty($submission['header'])) {
+                    $h = $submission['header'];
+                    if (is_string($h)) $header = json_decode($h, true) ?: null;
+                    elseif (is_array($h)) $header = $h;
+               }
+
+               $pdfFileId = $header['pdf_file_id'] ?? null;
+               $pdfFileName = $header['pdf_file_name'] ?? null;
+
+               $fileRow = null;
+               $fileExistsOnDisk = false;
+               if ($pdfFileId) {
+                    try {
+                         $cols = [];
+                         try {
+                              $cols = $db->getFieldNames('files');
+                         } catch (\Throwable $__cols) {
+                              $cols = [];
+                         }
+                         $qb = $db->table('files')->select('*');
+                         $added = false;
+                         $qb->groupStart();
+                         if (in_array('file_id', $cols, true)) {
+                              $qb->where('file_id', (int)$pdfFileId);
+                              $added = true;
+                         }
+                         if (in_array('f_id', $cols, true)) {
+                              $added ? $qb->orWhere('f_id', (int)$pdfFileId) : ($qb->where('f_id', (int)$pdfFileId) && $added = true);
+                         }
+                         if (in_array('id', $cols, true)) {
+                              $added ? $qb->orWhere('id', (int)$pdfFileId) : ($qb->where('id', (int)$pdfFileId) && $added = true);
+                         }
+                         $qb->groupEnd();
+                         if ($added) $fileRow = $qb->limit(1)->get()->getRowArray();
+                    } catch (\Throwable $e) {
+                         // ignore
+                    }
+               }
+
+               // check disk for filename from DB-row or header
+               $candidateName = $fileRow['file_name'] ?? $fileRow['filename'] ?? $pdfFileName ?? null;
+               if ($candidateName) {
+                    $candidatePath = WRITEPATH . 'uploads/secure_files/' . basename($candidateName);
+                    if (is_file($candidatePath)) $fileExistsOnDisk = true;
+               }
+
+               $branchInfo = null;
+               if (is_array($header) && !empty($header['branch_id'])) {
+                    try {
+                         $branchModel = model(\App\Models\BranchModel::class);
+                         $branchInfo = $branchModel->getBranchDetails($header['branch_id']);
+                    } catch (\Throwable $e) {
+                         // ignore
+                    }
+               }
+
+               return $this->respond([
+                    'submission' => $submission,
+                    'header' => $header,
+                    'pdf_file_id' => $pdfFileId,
+                    'pdf_file_name' => $pdfFileName,
+                    'file_row' => $fileRow,
+                    'file_exists_on_disk' => $fileExistsOnDisk,
+                    'branch_lookup' => $branchInfo,
+               ], 200);
+          } catch (\Throwable $e) {
                return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
           }
      }
@@ -813,11 +1345,7 @@ class DynamicFormController extends BaseController
 
           $useSubmissionTable = $this->usesSubmissionTable();
           $db = \Config\Database::connect();
-
-          // Track upload start time for diagnostics
-          $uploadStart = microtime(true);
-
-          // If using submission table and numeric id, ensure submission exists
+          $uploadStart = microtime(true); // track upload start time for diagnostics
           if ($useSubmissionTable && ctype_digit($sid)) {
                $sub = $db->table('form_submissions')->where('id', (int)$sid)->get()->getRowArray();
                if (!$sub) return $this->respond(['message' => 'Not found'], 404);
