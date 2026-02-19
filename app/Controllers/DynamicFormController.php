@@ -873,17 +873,54 @@ class DynamicFormController extends BaseController
                } catch (\Throwable $__dbg) {
                }
 
-               // Short-lived dedupe lock: avoid duplicate sends when create() triggers and an immediate update() (PDF attach)
+               // Short-lived dedupe + PDF-aware defer: avoid duplicate sends and defer when template expects a PDF but none present
                $forceSend = !empty($payload['force']);
+
+               // Heuristic: treat template as requiring PDF when template variables/html reference pdf_file_name
+               $templateRefsPdf = (stripos($tmpl['html_template'] ?? '', '{{pdf_file_name') !== false)
+                    || (stripos((string)($tmpl['variables'] ?? ''), 'pdf_file_name') !== false);
+
+               // Quick check whether the frontend already supplied a PDF id/name in payload/header
+               $pdfInPayload = !empty($payload['pdf_file_id'])
+                    || (is_array($header) && (!empty($header['pdf_file_id']) || !empty($header['pdf_file_name'])));
+
+               // If template expects a PDF but none is present, defer the send and let the update() (PDF attach) trigger it later
+               if ($templateRefsPdf && !$forceSend && !$pdfInPayload) {
+                    try {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] deferred_for_missing_pdf: form_id={$formId} submission={$submissionId} template=" . ($tmpl['event_key'] ?? 'NULL') . " header_pdf_present=" . ($pdfInPayload ? 'Y' : 'N') . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+                    return;
+               }
+
+               // Dedupe lock: check cache and file-lock fallback so duplicate sends are reliably suppressed
                try {
                     $cacheKey = 'email_send_lock_' . (int)$formId . '_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)$submissionId) . '_' . ($tmpl['event_key'] ?? 'generic');
                     $cache = \Config\Services::cache();
-                    if (! $forceSend && $cache->get($cacheKey)) {
-                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] dedupe_skip: form_id={$formId} submission={$submissionId} template=" . ($tmpl['event_key'] ?? 'NULL') . "\n", FILE_APPEND);
+
+                    $locked = false;
+                    try {
+                         if ($cache->get($cacheKey)) $locked = true;
+                    } catch (\Throwable $__c) { $locked = false; }
+
+                    // file-lock fallback
+                    $lockDir = WRITEPATH . 'email_locks';
+                    $lockFile = $lockDir . '/' . $cacheKey . '.lock';
+                    if (! $locked && is_dir($lockDir) && file_exists($lockFile) && (filemtime($lockFile) + 120) > time()) {
+                         $locked = true;
+                    }
+
+                    if (! $forceSend && $locked) {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] dedupe_skip: form_id={$formId} submission={$submissionId} template=" . ($tmpl['event_key'] ?? 'NULL') . " (locked)\n", FILE_APPEND);
                          return;
                     }
-                    // mark lock for 2 minutes
-                    $cache->save($cacheKey, 1, 120);
+
+                    // persist cache lock + create file-lock
+                    try { $cache->save($cacheKey, 1, 120); } catch (\Throwable $__ignore) {}
+                    try {
+                         if (!is_dir($lockDir)) @mkdir($lockDir, 0755, true);
+                         @file_put_contents($lockFile, (string)time());
+                    } catch (\Throwable $__ignore) {}
                } catch (\Throwable $__cacheErr) {
                     // ignore cache/storage failures — best-effort only
                }
