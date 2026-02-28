@@ -83,7 +83,7 @@ class BranchModel extends Model
                     if ($hasBranches) {
                          if ($willJoinBranches) {
                               $branchesSchema = $branchesDb->database ? $branchesDb->database . '.' : '';
-                              $joins[] = "LEFT JOIN " . $branchesSchema . "Branches bic ON bi.branch_id = bic.id";
+                              $joins[] = "LEFT JOIN " . $branchesSchema . "Branches bic ON bi.branch_id = bic.SysNo";
                          } else {
                               // Branches exists but in a different DB — fetch branch_name afterwards from $branchesDb
                               $branchesExternalDb = $branchesDb;

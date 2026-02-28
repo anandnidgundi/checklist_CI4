@@ -21,6 +21,8 @@ class FileModel extends Model
           'diesel_id',
           'power_id',
           'hkr_id',
+          'form_id',
+          'submission_id',
           'createdDTM'
      ]; // Fields that can be inserted or updated
      protected $useTimestamps = false; // Disable automatic timestamps

@@ -1,0 +1,64 @@
+{
+    "title": "CodeIgniter\\Exceptions\\PageNotFoundException",
+    "type": "CodeIgniter\\Exceptions\\PageNotFoundException",
+    "code": 404,
+    "message": "Can't find a route for 'GET: backend/pdf/download/45'.",
+    "file": "C:\\dev\\htdocs\\checklist\\vendor\\codeigniter4\\framework\\system\\CodeIgniter.php",
+    "line": 981,
+    "trace": [
+        {
+            "file": "C:\\dev\\htdocs\\checklist\\vendor\\codeigniter4\\framework\\system\\CodeIgniter.php",
+            "line": 981,
+            "function": "forPageNotFound",
+            "class": "CodeIgniter\\Exceptions\\PageNotFoundException",
+            "type": "::",
+            "args": [
+                "Can't find a route for 'GET: backend/pdf/download/45'."
+            ]
+        },
+        {
+            "file": "C:\\dev\\htdocs\\checklist\\vendor\\codeigniter4\\framework\\system\\CodeIgniter.php",
+            "line": 364,
+            "function": "display404errors",
+            "class": "CodeIgniter\\CodeIgniter",
+            "type": "->",
+            "args": [
+                {}
+            ]
+        },
+        {
+            "file": "C:\\dev\\htdocs\\checklist\\vendor\\codeigniter4\\framework\\system\\Boot.php",
+            "line": 325,
+            "function": "run",
+            "class": "CodeIgniter\\CodeIgniter",
+            "type": "->",
+            "args": []
+        },
+        {
+            "file": "C:\\dev\\htdocs\\checklist\\vendor\\codeigniter4\\framework\\system\\Boot.php",
+            "line": 67,
+            "function": "runCodeIgniter",
+            "class": "CodeIgniter\\Boot",
+            "type": "::",
+            "args": [
+                {}
+            ]
+        },
+        {
+            "file": "C:\\dev\\htdocs\\checklist\\index.php",
+            "line": 58,
+            "function": "bootWeb",
+            "class": "CodeIgniter\\Boot",
+            "type": "::",
+            "args": [
+                {
+                    "systemDirectory": "C:\\dev\\htdocs\\checklist\\app\\Config/../../vendor/codeigniter4/framework/system",
+                    "appDirectory": "C:\\dev\\htdocs\\checklist\\app\\Config/..",
+                    "writableDirectory": "C:\\dev\\htdocs\\checklist\\app\\Config/../../writable",
+                    "testsDirectory": "C:\\dev\\htdocs\\checklist\\app\\Config/../../tests",
+                    "viewDirectory": "C:\\dev\\htdocs\\checklist\\app\\Config/../Views"
+                }
+            ]
+        }
+    ]
+}

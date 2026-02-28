@@ -100,6 +100,87 @@ class BrandingChecklistModel extends Model
 
           $chk['photos'] = $db->table('branding_photos')->where('checklist_id', $id)->get()->getResultArray();
           $chk['actions'] = $db->table('branding_actions')->where('checklist_id', $id)->get()->getResultArray();
+
+          // Backfill records from dynamic-form submission when checklist was
+          // created via the dynamic-form import shortcut.  The import logic in
+          // DynamicFormController::uploadPhoto() creates a branding_checklists
+          // row with centre_name="Imported from dynamic-form X" where X is
+          // the submission id.  Pull the real input rows from `form_records`.
+          if (
+               !empty($chk['centre_name'])
+               && preg_match('/Imported from dynamic-form\s*(\d+)/i', $chk['centre_name'], $m)
+          ) {
+               $submissionId = (int)$m[1];
+               if ($submissionId > 0) {
+                    try {
+                         // pull records plus input metadata for labels/names
+                         $dyn = $db->table('form_records')
+                              ->select('form_records.*, fi.input_name, fi.input_label')
+                              ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left')
+                              ->where('form_records.submission_id', $submissionId)
+                              ->orderBy('form_records.id', 'asc')
+                              ->get()
+                              ->getResultArray();
+                         // merge into records array (preserve existing records too)
+                         if (!empty($dyn)) {
+                              // fetch section/sub-section names for readability
+                              $sectionIds = array_unique(array_filter(array_map(function ($r) {
+                                   return isset($r['section_id']) ? (int)$r['section_id'] : 0;
+                              }, $dyn)));
+                              $subIds = array_unique(array_filter(array_map(function ($r) {
+                                   return isset($r['sub_section_id']) ? (int)$r['sub_section_id'] : 0;
+                              }, $dyn)));
+
+                              $sectionMap = [];
+                              if (!empty($sectionIds)) {
+                                   try {
+                                        $secs = $db->table('form_sections')->select('section_id,section_name')
+                                             ->whereIn('section_id', $sectionIds)
+                                             ->get()->getResultArray();
+                                        foreach ($secs as $s) {
+                                             $sectionMap[(int)$s['section_id']] = $s['section_name'] ?? null;
+                                        }
+                                   } catch (\Throwable $__s) {
+                                        // ignore
+                                   }
+                              }
+
+                              $subSectionMap = [];
+                              if (!empty($subIds)) {
+                                   try {
+                                        $subs = $db->table('form_sub_sections')->select('sub_section_id,sub_section_name')
+                                             ->whereIn('sub_section_id', $subIds)
+                                             ->get()->getResultArray();
+                                        foreach ($subs as $ss) {
+                                             $subSectionMap[(int)$ss['sub_section_id']] = $ss['sub_section_name'] ?? null;
+                                        }
+                                   } catch (\Throwable $__ss) {
+                                        // ignore
+                                   }
+                              }
+
+                              foreach ($dyn as &$dr) {
+                                   $sid = isset($dr['section_id']) ? (int)$dr['section_id'] : 0;
+                                   $subid = isset($dr['sub_section_id']) ? (int)$dr['sub_section_id'] : 0;
+                                   if ($sid && isset($sectionMap[$sid])) {
+                                        $dr['section_name'] = $sectionMap[$sid];
+                                   }
+                                   if ($subid && isset($subSectionMap[$subid])) {
+                                        $dr['sub_section_name'] = $subSectionMap[$subid];
+                                   }
+                              }
+                              unset($dr);
+
+                              // merge records
+                              $chk['records'] = array_merge($chk['records'] ?? [], $dyn);
+                         }
+                    } catch (\Throwable $e) {
+                         // ignore failures, original records still returned
+                         log_message('error', 'BrandingChecklistModel::getChecklistWithRelations dynamic records failed: ' . $e->getMessage());
+                    }
+               }
+          }
+
           return $chk;
      }
 

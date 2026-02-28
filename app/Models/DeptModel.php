@@ -1176,7 +1176,7 @@ class DeptModel extends Model
      public function getUserMapBranches($emp_code)
      {
           return $this->db->table('user_map')
-               ->select('branches')
+               ->select('Branches')
                ->where('emp_code', $emp_code)
                // ->where( 'status', 'A')
                ->get()

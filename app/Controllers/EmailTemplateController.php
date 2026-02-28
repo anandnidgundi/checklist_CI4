@@ -29,6 +29,39 @@ class EmailTemplateController extends ResourceController
      {
           $data = $this->request->getJSON(true);
 
+          // Normalize/validate cc_emails when provided
+          if (isset($data['cc_emails']) && $data['cc_emails'] !== null && $data['cc_emails'] !== '') {
+               $raw = $data['cc_emails'];
+               $parts = is_array($raw) ? $raw : preg_split('/[,\n;]+/', (string)$raw);
+               $clean = [];
+               $invalid = [];
+               foreach ($parts as $p) {
+                    $p = trim((string)$p);
+                    if ($p === '') continue;
+                    if (!filter_var($p, FILTER_VALIDATE_EMAIL)) $invalid[] = $p;
+                    else $clean[] = $p;
+               }
+               if (!empty($invalid)) {
+                    return $this->failValidationErrors(['cc_emails' => 'Invalid email(s): ' . implode(', ', $invalid)]);
+               }
+               $data['cc_emails'] = implode(', ', $clean);
+          } else {
+               $data['cc_emails'] = null;
+          }
+
+          // Normalize/validate optional form_id when provided
+          if (isset($data['form_id']) && $data['form_id'] !== null && $data['form_id'] !== '') {
+               $fid = (int)$data['form_id'];
+               if ($fid <= 0) return $this->failValidationErrors(['form_id' => 'Invalid form_id']);
+               $formsModel = new \App\Models\FormsModel();
+               if (!$formsModel->find($fid)) {
+                    return $this->failValidationErrors(['form_id' => 'Form not found']);
+               }
+               $data['form_id'] = $fid;
+          } else {
+               $data['form_id'] = null;
+          }
+
           // DEBUG: log incoming payload and insertion result (temporary)
           try {
                $debug = "[" . date('Y-m-d H:i:s') . "] Incoming email-template create payload:\n" . print_r($data, true) . "\n";
@@ -59,6 +92,40 @@ class EmailTemplateController extends ResourceController
      public function update($id = null)
      {
           $data = $this->request->getJSON(true);
+
+          // Normalize/validate cc_emails when provided
+          if (isset($data['cc_emails']) && $data['cc_emails'] !== null && $data['cc_emails'] !== '') {
+               $raw = $data['cc_emails'];
+               $parts = is_array($raw) ? $raw : preg_split('/[,\n;]+/', (string)$raw);
+               $clean = [];
+               $invalid = [];
+               foreach ($parts as $p) {
+                    $p = trim((string)$p);
+                    if ($p === '') continue;
+                    if (!filter_var($p, FILTER_VALIDATE_EMAIL)) $invalid[] = $p;
+                    else $clean[] = $p;
+               }
+               if (!empty($invalid)) {
+                    return $this->failValidationErrors(['cc_emails' => 'Invalid email(s): ' . implode(', ', $invalid)]);
+               }
+               $data['cc_emails'] = implode(', ', $clean);
+          } else {
+               $data['cc_emails'] = null;
+          }
+
+          // Normalize/validate optional form_id when provided
+          if (isset($data['form_id']) && $data['form_id'] !== null && $data['form_id'] !== '') {
+               $fid = (int)$data['form_id'];
+               if ($fid <= 0) return $this->failValidationErrors(['form_id' => 'Invalid form_id']);
+               $formsModel = new \App\Models\FormsModel();
+               if (!$formsModel->find($fid)) {
+                    return $this->failValidationErrors(['form_id' => 'Form not found']);
+               }
+               $data['form_id'] = $fid;
+          } else {
+               $data['form_id'] = null;
+          }
+
           if ($this->model->update($id, $data)) {
                return $this->respond($data);
           }
@@ -82,6 +149,11 @@ class EmailTemplateController extends ResourceController
           if (!$template) return $this->failNotFound('Template not found');
           $html = $this->replaceVariables($template['html_template'], $data);
           $subject = $this->replaceVariables($template['subject'], $data);
+
+          // Decode HTML entities so preview renders apostrophes correctly (e.g. &apos; &rsquo;)
+          $html = html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+          $subject = html_entity_decode($subject, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
           return $this->respond(['subject' => $subject, 'body' => $html]);
      }
 
@@ -125,7 +197,8 @@ class EmailTemplateController extends ResourceController
                     $template['subject'] = $subjectOverride;
                }
 
-               $res = $emailController->sendTemplate($event_key, $toEmail, $toName, $variables ?? [], $subjectOverride ?? null);
+               $ccFromPayload = $payload['cc'] ?? $payload['cc_emails'] ?? null;
+               $res = $emailController->sendTemplate($event_key, $toEmail, $toName, $variables ?? [], $subjectOverride ?? null, $ccFromPayload);
 
                $ok = is_string($res) && stripos($res, 'Email sent') !== false;
                $results[] = ['email' => $toEmail, 'status' => $ok ? 'sent' : 'failed', 'message' => $res];

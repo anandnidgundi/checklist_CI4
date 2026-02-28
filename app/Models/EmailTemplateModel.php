@@ -13,6 +13,8 @@ class EmailTemplateModel extends Model
           'subject',
           'html_template',
           'variables',
+          'cc_emails',
+          'form_id',
           'created_at',
           'updated_at'
      ];

@@ -11,6 +11,13 @@ $routes->GET('viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
 // Backwards-compatible routes for deployments where the CI app is under a 'backend' folder
 $routes->GET('backend/viewAttachment/(:any)', 'FileUpload::viewAttachment/$1');
 $routes->GET('backend/viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
+// legacy entry point alias – some clients request backend/index.php directly
+$routes->GET('backend/index.php', 'Home::index');
+$routes->GET('pdf/download/(:any)', 'PdfController::checklistDownload/$1');
+$routes->GET('backend/pdf/download/(:any)', 'PdfController::checklistDownload/$1');
+
+
+
 $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->POST("register", "Register::index");
      $routes->match(['POST', 'options'], "login", "Login::index");
@@ -122,6 +129,8 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "addBranchToCluster", "User::addBranchToCluster", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "BM_DashboardCount", "User::BM_DashboardCount", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "CM_DashboardCount", "DashboardController::CM_DashboardCount", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "Branding_DashboardCount", "DashboardController::Branding_DashboardCount", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "Maintenance_DashboardCount", "DashboardController::Maintenance_DashboardCount", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getLatestTasksByBranch", "DashboardController::getLatestTasksByBranch", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "checkToken", "User::checkToken", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getUserBranchClusterZoneList", "User::getUserBranchClusterZoneList", ['filter' => 'authFilter']);
@@ -360,8 +369,6 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['GET', 'options'], 'branding-checklist/subsections', 'BrandingChecklistController::subSections', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'branding-checklist/subsections', 'BrandingChecklistController::createSubSection', ['filter' => 'authFilter']);
 
-     // Branding dashboard counts (aggregate metrics) used by front-end dashboards
-     $routes->match(['POST', 'options'], "Branding_DashboardCount", "BrandingChecklistController::dashboardCount", ['filter' => 'authFilter']);
 
      // VDC Forms
      $routes->match(['POST', 'options'], "createForm", "FormsController::createForm", ['filter' => 'authFilter']);
@@ -408,6 +415,10 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['GET', 'options'], 'dynamic-form/list', 'DynamicFormController::list', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'dynamic-form/create', 'DynamicFormController::create', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'dynamic-form/update/(:segment)', 'DynamicFormController::update/$1', ['filter' => 'authFilter']);
+
+     // Admin: re-run email trigger for an existing submission (best-effort)
+     $routes->match(['POST', 'options'], 'dynamic-form/(:num)/resend-email', 'DynamicFormController::resendEmail/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'dynamic-form/(:num)/debug', 'DynamicFormController::debugSubmission/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], 'dynamic-form/show/(:segment)', 'DynamicFormController::show/$1', ['filter' => 'authFilter']);
 
      // Email Templates (CRUD + render preview)
@@ -419,10 +430,23 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], 'email-templates/render/(:segment)', 'EmailTemplateController::render/$1', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'email-templates/send/(:segment)', 'EmailTemplateController::send/$1', ['filter' => 'authFilter']);
 
-     // Logs API (admin)
+     // Debug helpers (admin-only)
+     $routes->match(['GET', 'options'], 'debug/email-logs', 'EmailController::debugLogs', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'debug/file/(:num)', 'EmailController::debugFile/$1', ['filter' => 'authFilter']);
+     // endpoint used by frontend to send templated emails (POST JSON payload)
+     $routes->match(['POST', 'options'], 'email/send', 'EmailController::sendTemplate', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "logs", "LogsController::addLog", ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], "logs", "LogsController::list", ['filter' => 'authFilter']);
 
      // New: detailed branch info (uses secondary DB when available)
      $routes->match(['GET', 'options'], "newBranchDetails/(:num)", "BranchController::getBranchDetails/$1", ['filter' => 'authFilter']);
+
+     // Branding dashboard counts (aggregate metrics) used by front-end dashboards
+     $routes->match(['POST', 'options'], "Branding_DashboardCount", "BrandingChecklistController::dashboardCount", ['filter' => 'authFilter']);
+
+     // PDF export for branding checklist (public or secured as needed)
+     $routes->match(['GET', 'options'], 'branding-checklist/(:num)/pdf', 'PdfController::checklist/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'branding-checklist/(:num)/pdf/download', 'PdfController::checklistDownload/$1', ['filter' => 'authFilter']);
+
+     $routes->GET('pdf/download/(:num)', 'PdfController::checklistDownload/$1', ['filter' => 'authFilter']);
 });

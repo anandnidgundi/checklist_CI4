@@ -57,6 +57,95 @@ class DashboardController extends BaseController
           }
      }
 
+     /**
+      * Internal helper used by both branding/maintenance endpoints.  It looks up
+      * the form ID by name then counts (and optionally returns) submissions that
+      * match the selected month/branch filter.  The query inspects the JSON
+      * `header` column so the branch comparison works the same way the React
+      * list components derive their branch list.
+      *
+      * @param string $formName  Case‑insensitive form name (from `vdc_forms`).
+      */
+     private function formDashboardCount(string $formName)
+     {
+          $userDetails = $this->validateAuthorization();
+          if (!is_object($userDetails) || empty($userDetails->emp_code)) {
+               log_message('error', 'Unauthorized attempt to access form dashboard for ' . $formName);
+               return $this->respond(['STATUS' => false, 'message' => 'Unauthorized'], 401);
+          }
+
+          $requestData = $this->request->getJSON() ?? new \stdClass();
+          $selectedMonth = isset($requestData->selectedMonth) ? $requestData->selectedMonth : date('Y-m');
+          $selectedBranch = isset($requestData->selectedBranch) ? $requestData->selectedBranch : '';
+
+          // resolve form_id from forms table
+          $db = \Config\Database::connect();
+          $row = $db->table('vdc_forms')
+               ->select('id')
+               ->where('LOWER(form_name)', strtolower($formName))
+               ->get()
+               ->getRowArray();
+          $formId = $row['id'] ?? null;
+          if (!$formId) {
+               log_message('error', "formDashboardCount: form '{$formName}' not found");
+               return $this->respond(['STATUS' => false, 'message' => "Form not found: {$formName}", 'data' => null], 500);
+          }
+
+          // if branding branch is numeric id we need the text name to match against
+          $branchToMatch = $selectedBranch;
+          if (ctype_digit((string)$selectedBranch) && $selectedBranch !== '') {
+               $brow = $db->table('Branches')
+                    ->select('SysField as branch_name')
+                    ->where('id', $selectedBranch)
+                    ->get()
+                    ->getRowArray();
+               if (!empty($brow['branch_name'])) {
+                    $branchToMatch = $brow['branch_name'];
+               }
+          }
+
+          $builder = $db->table('form_submissions')->where('form_id', $formId);
+          if ($selectedMonth) {
+               $builder->where("DATE_FORMAT(created_dtm,'%Y-%m')", $selectedMonth);
+          }
+          if ($branchToMatch !== '') {
+               $escaped = $db->escapeLikeString($branchToMatch);
+               $builder->groupStart()
+                    ->like('header', '"centre_name":"' . $escaped . '"')
+                    ->orLike('header', '"branch_name":"' . $escaped . '"')
+                    ->groupEnd();
+          }
+
+          $count = (int) $builder->countAllResults(false);
+
+          // include some rows for debugging / future expansion; limit to 500 so we
+          // don't accidentally stream thousands of records to the client.
+          $rows = [];
+          if (!empty($requestData->includeRows) || true) {
+               $rows = $builder->orderBy('created_dtm', 'desc')->limit(500)->get()->getResultArray();
+          }
+
+          return $this->respond([
+               'STATUS' => true,
+               'message' => "{$formName} Dashboard Count.",
+               'data' => [
+                    'count' => $count,
+                    'rows' => $rows,
+               ]
+          ], 200);
+     }
+
+     // wrapper endpoints for other dashboards
+     public function Branding_DashboardCount()
+     {
+          return $this->formDashboardCount('Branding_Form');
+     }
+
+     public function Maintenance_DashboardCount()
+     {
+          return $this->formDashboardCount('Maintenance_Checklist');
+     }
+
      // Returns latest task (last entry) per branch for the selected month and filters
      public function getLatestTasksByBranch()
      {

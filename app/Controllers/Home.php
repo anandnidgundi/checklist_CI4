@@ -219,6 +219,7 @@ class Home extends BaseController
           }
      }
 
+
      public function getDeptWithCat()
      {
 
@@ -1658,7 +1659,17 @@ class Home extends BaseController
 
           $deptModel = new DeptModel();
           $cluster = $deptModel->getUserMapBranches($user);
-          $branches = $cluster['0']['branches'];
+
+          // make sure we got a row with a 'Branches' column
+          $branches = '';
+          if (is_array($cluster) && isset($cluster[0]) && array_key_exists('Branches', $cluster[0])) {
+               $branches = $cluster[0]['Branches'];
+          }
+
+          if ($branches === '' || $branches === null) {
+               // no branches found for user -> return empty list rather than error
+               return $this->respond(['status' => true, 'data' => []], 200);
+          }
 
           $cluster = $deptModel->getUserBranches($branches);
           if ($cluster) {

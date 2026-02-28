@@ -1,7 +1,9 @@
-﻿<?php
+<?php
 
 namespace App\Controllers;
 
+use App\Controllers\BaseController;
+use App\Models\BranchModel;
 use CodeIgniter\API\ResponseTrait;
 use CodeIgniter\HTTP\ResponseInterface;
 use App\Services\JwtService;
@@ -16,25 +18,18 @@ class BranchController extends BaseController
       */
      public function getBranchDetails($id)
      {
-          $auth = $this->validateAuthorization();
-          if ($auth instanceof ResponseInterface) return $auth;
+          $userDetails = $this->validateAuthorization();
+          $user = $userDetails->emp_code;
 
-          // Accept branch id as-is (allow zero-padded strings like '001').
-          $idRaw = is_scalar($id) ? trim((string) $id) : '';
-          if ($idRaw === '') {
-               return $this->respond(['status' => false, 'message' => 'Invalid branch id'], 400);
+          $userModel = new BranchModel();
+          $user = $userModel->getBranchDetails($id);
+
+          if ($user) {
+               return $this->respond(['status' => true, 'data' => $user], 200);
+          } else {
+               return $this->respond(['status' => false, 'message' => 'Branch Detail not found'], 404);
           }
-
-          /** @var \App\Models\BranchModel $bm */
-          $bm = new \App\Models\BranchModel();
-          $data = $bm->getBranchDetails($idRaw);
-          if ($data) {
-               return $this->respond(['status' => true, 'data' => $data], 200);
-          }
-
-          return $this->respond(['status' => false, 'message' => 'Branch Detail not found'], 404);
      }
-
      private function validateAuthorization()
      {
           if (!class_exists('App\\Services\\JwtService')) {
@@ -59,3 +54,4 @@ class BranchController extends BaseController
           }
      }
 }
+

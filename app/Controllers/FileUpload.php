@@ -324,6 +324,9 @@ class FileUpload extends BaseController
                     'diesel_id'   => htmlspecialchars($this->request->getPost('diesel_id'), ENT_QUOTES, 'UTF-8'),
                     'power_id'    => htmlspecialchars($this->request->getPost('power_id'), ENT_QUOTES, 'UTF-8'),
                     'hkr_id'      => htmlspecialchars($this->request->getPost('hkr_id'), ENT_QUOTES, 'UTF-8'),
+                    // Allow uploader to associate this file with a form/submission when provided by the client
+                    'form_id'     => $this->request->getPost('form_id') ? (int) $this->request->getPost('form_id') : null,
+                    'submission_id' => $this->request->getPost('submission_id') ? (int) $this->request->getPost('submission_id') : null,
                     'createdDTM'  => date('Y-m-d H:i:s'),
                ];
 
@@ -335,7 +338,7 @@ class FileUpload extends BaseController
                     return $this->response->setJSON([
                          'status' => 'success',
                          'message' => 'File uploaded successfully.',
-                         'data' => ['file_id' => $insertedId],
+                         'data' => ['file_id' => $insertedId, 'file_name' => $newFileName],
                     ]);
                } else {
                     log_message('error', 'Database insert failed for file: ' . $newFileName);
