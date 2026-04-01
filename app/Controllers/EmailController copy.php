@@ -78,7 +78,6 @@ class EmailController extends Controller
           $mailUsername = getenv('SMTP_USERNAME') ?: 'emailappsmtp.4f7bbead59206e3e';
           $mailPassword = getenv('SMTP_PASSWORD') ?: '4f7bbead59206e3e_LB7cVCgqGGv9';
 
-
           $mail = new PHPMailer(true);
           try {
                $mail->isSMTP();
@@ -89,38 +88,6 @@ class EmailController extends Controller
                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
                $mail->Port       = 587;
                $mail->setFrom('info@vijayadiagnostic.in', 'Vijaya Diagnostic Centre');
-
-               // Special handling for Lab Daily/Weekly checklists: force recipient from .env, do not include branch emails
-               $isLabDailyChecklist = false;
-               $isLabWeeklyChecklist = false;
-               $formNameCheck = '';
-               if (!empty($data['form_name'])) {
-                    $formNameCheck = strtolower(trim((string)$data['form_name']));
-               } elseif (!empty($template['form_id'])) {
-                    // Try to resolve form name from DB if not present in data
-                    try {
-                         $db = \Config\Database::connect();
-                         $formRow = $db->table('vdc_forms')->select('form_name')->where('id', (int)$template['form_id'])->get()->getRowArray();
-                         if ($formRow && !empty($formRow['form_name'])) {
-                              $formNameCheck = strtolower(trim((string)$formRow['form_name']));
-                         }
-                    } catch (\Throwable $e) {
-                    }
-               }
-               if ($formNameCheck !== '') {
-                    $isLabDailyChecklist = (strpos($formNameCheck, 'phlebotomy_checklist') !== false)
-                         || (strpos($formNameCheck, 'lab daily') !== false);
-                    $isLabWeeklyChecklist = (strpos($formNameCheck, 'lab_weekly_checklist') !== false)
-                         || (strpos($formNameCheck, 'lab weekly') !== false);
-               }
-
-               if ($isLabDailyChecklist) {
-                    $toEmail = getenv('LAB_MANAGER_DAILY_CHECKLIST_TO_EMAIL') ?: '';
-                    $toName = 'Lab Manager';
-               } elseif ($isLabWeeklyChecklist) {
-                    $toEmail = getenv('LAB_MANAGER_WEEKLY_CHECKLIST_TO_EMAIL') ?: '';
-                    $toName = 'Lab Manager';
-               }
                $mail->addAddress($toEmail, $toName);
 
                // if caller requested a checklist PDF attachment, generate it now
@@ -153,7 +120,7 @@ class EmailController extends Controller
                               }
 
                               if ($resolvedFormId > 0) {
-                                   $formRow = $db->table('vdc_forms')->select('form_name')->where('id', $resolvedFormId)->get()->getRowArray();
+                                   $formRow = $db->table('forms')->select('form_name')->where('id', $resolvedFormId)->get()->getRowArray();
                                    $resolvedFormName = strtolower(trim((string)($formRow['form_name'] ?? '')));
                               }
                          } catch (\Throwable $__lookupEx) {
@@ -202,44 +169,9 @@ class EmailController extends Controller
                          } catch (\Throwable $__diagEx) {
                          }
 
-                         // Explicitly detect IT checklist and use IT PDF template
-                         $isItChecklist = false;
-                         $isLabDailyChecklist = false;
-                         $isLabWeeklyChecklist = false;
-                         if ($resolvedFormName !== '') {
-                              $resolvedFormNameLower = strtolower($resolvedFormName);
-                              $isItChecklist = (strpos($resolvedFormNameLower, 'it_checklist') !== false)
-                                   || (strpos($resolvedFormNameLower, 'it checklist') !== false)
-                                   || (strpos($resolvedFormNameLower, 'information technology') !== false)
-                                   || preg_match('/(^|[^a-z0-9])it([^a-z0-9]|$)/i', $resolvedFormNameLower);
-                              $isLabDailyChecklist = (strpos($resolvedFormNameLower, 'phlebotomy_checklist') !== false)
-                                   || (strpos($resolvedFormNameLower, 'lab daily') !== false);
-                              $isLabWeeklyChecklist = (strpos($resolvedFormNameLower, 'lab_weekly_checklist') !== false)
-                                   || (strpos($resolvedFormNameLower, 'lab weekly') !== false);
-                         } else {
-                              $formName = strtolower(trim((string)($data['form_name'] ?? '')));
-                              $isItChecklist = (strpos($formName, 'it_checklist') !== false)
-                                   || (strpos($formName, 'it checklist') !== false)
-                                   || (strpos($formName, 'information technology') !== false)
-                                   || preg_match('/(^|[^a-z0-9])it([^a-z0-9]|$)/i', $formName);
-                              $isLabDailyChecklist = (strpos($formName, 'phlebotomy_checklist') !== false)
-                                   || (strpos($formName, 'lab daily') !== false);
-                              $isLabWeeklyChecklist = (strpos($formName, 'lab_weekly_checklist') !== false)
-                                   || (strpos($formName, 'lab weekly') !== false);
-                         }
-
                          if ($isMaintenance) {
                               $pdfBytes = \App\Services\PdfService::buildMaintenancePdf($cid);
                               $mail->addStringAttachment($pdfBytes, "maintenance_{$cid}.pdf");
-                         } elseif ($isItChecklist) {
-                              $pdfBytes = \App\Services\PdfService::buildItPdf($cid);
-                              $mail->addStringAttachment($pdfBytes, "it_checklist_{$cid}.pdf");
-                         } elseif ($isLabDailyChecklist) {
-                              $pdfBytes = \App\Services\PdfService::buildLabDailyPdf($cid); // Use lab_daily_pdf view for Lab Daily checklist
-                              $mail->addStringAttachment($pdfBytes, "lab_daily_checklist_{$cid}.pdf");
-                         } elseif ($isLabWeeklyChecklist) {
-                              $pdfBytes = \App\Services\PdfService::buildLabWeeklyPdf($cid); // Use the correct builder for Lab Weekly
-                              $mail->addStringAttachment($pdfBytes, "lab_weekly_checklist_{$cid}.pdf");
                          } else {
                               $pdfBytes = \App\Services\PdfService::buildChecklistPdf($cid);
                               $mail->addStringAttachment($pdfBytes, "checklist_{$cid}.pdf");
@@ -265,52 +197,26 @@ class EmailController extends Controller
                     }
                }
 
-               // For Lab Daily/Weekly, do NOT include branch emails in CC
-               // and when explicitly asked via include_branch_cc=0.
-               $includeBranchCc = true;
-               if (is_array($data) && array_key_exists('include_branch_cc', $data)) {
-                    $flag = strtolower(trim((string)$data['include_branch_cc']));
-                    $includeBranchCc = !in_array($flag, ['0', 'false', 'no', 'off'], true);
+               // Include branch emails passed via the template variables payload so callers can add them (branch_manager_email, branch_email)
+               $branchEmails = [];
+               if (!empty($data['branch_manager_email'])) {
+                    if (is_array($data['branch_manager_email'])) {
+                         $branchEmails = array_merge($branchEmails, $data['branch_manager_email']);
+                    } else {
+                         $branchEmails = array_merge($branchEmails, preg_split('/[,\s;]+/', (string)$data['branch_manager_email']));
+                    }
                }
-
-               if (!($isLabDailyChecklist || $isLabWeeklyChecklist) && $includeBranchCc) {
-                    $branchEmails = [];
-                    if (!empty($data['branch_manager_email'])) {
-                         if (is_array($data['branch_manager_email'])) {
-                              $branchEmails = array_merge($branchEmails, $data['branch_manager_email']);
-                         } else {
-                              $branchEmails = array_merge($branchEmails, preg_split('/[,\t;]+/', (string)$data['branch_manager_email']));
-                         }
+               if (!empty($data['branch_email'])) {
+                    if (is_array($data['branch_email'])) {
+                         $branchEmails = array_merge($branchEmails, $data['branch_email']);
+                    } else {
+                         $branchEmails = array_merge($branchEmails, preg_split('/[,\s;]+/', (string)$data['branch_email']));
                     }
-                    if (!empty($data['branch_email'])) {
-                         if (is_array($data['branch_email'])) {
-                              $branchEmails = array_merge($branchEmails, $data['branch_email']);
-                         } else {
-                              $branchEmails = array_merge($branchEmails, preg_split('/[,\t;]+/', (string)$data['branch_email']));
-                         }
-                    }
-                    if (!empty($branchEmails)) {
-                         $branchEmails = [];
-                         if (!empty($data['branch_manager_email'])) {
-                              if (is_array($data['branch_manager_email'])) {
-                                   $branchEmails = array_merge($branchEmails, $data['branch_manager_email']);
-                              } else {
-                                   $branchEmails = array_merge($branchEmails, preg_split('/[,	;]+/', (string)$data['branch_manager_email']));
-                              }
-                         }
-                         if (!empty($data['branch_email'])) {
-                              if (is_array($data['branch_email'])) {
-                                   $branchEmails = array_merge($branchEmails, $data['branch_email']);
-                              } else {
-                                   $branchEmails = array_merge($branchEmails, preg_split('/[,	;]+/', (string)$data['branch_email']));
-                              }
-                         }
-                         if (!empty($branchEmails)) {
-                              foreach ($branchEmails as $be) {
-                                   $be = trim((string)$be);
-                                   if ($be !== '') $ccs[] = $be;
-                              }
-                         }
+               }
+               if (!empty($branchEmails)) {
+                    foreach ($branchEmails as $be) {
+                         $be = trim((string)$be);
+                         if ($be !== '') $ccs[] = $be;
                     }
                }
 

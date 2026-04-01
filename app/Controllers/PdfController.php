@@ -7,6 +7,54 @@ use CodeIgniter\Controller;
 class PdfController extends Controller
 {
      /**
+      * Downloadable PDF representation of a lab weekly checklist entry.
+      */
+     public function labWeeklyDownload(int $id)
+     {
+          $uri = $this->request->getUri();
+          log_message('error', 'PdfController::labWeeklyDownload invoked, method=' . $this->request->getMethod() . ', path=' . ($uri ? $uri->getPath() : '[none]'));
+
+          try {
+               $output = \App\Services\PdfService::buildLabWeeklyPdf($id);
+          } catch (\RuntimeException $e) {
+               log_message('error', "PdfController::labWeeklyDownload failed: {$e->getMessage()}");
+               return $this->response->setStatusCode(404)->setBody('Lab weekly checklist entry not found');
+          }
+
+          $inline = $this->request->getGet('inline');
+          $disposition = $inline ? 'inline' : 'attachment';
+          return $this->response
+               ->setStatusCode(200)
+               ->setContentType('application/pdf')
+               ->setHeader('Content-Disposition', "$disposition; filename=\"lab_weekly_{$id}.pdf\"")
+               ->setBody($output);
+     }
+
+
+     /**
+      * Downloadable PDF representation of a phlebotomy checklist entry.
+      */
+     public function phlebotomyDownload(int $id)
+     {
+          $uri = $this->request->getUri();
+          log_message('error', 'PdfController::phlebotomyDownload invoked, method=' . $this->request->getMethod() . ', path=' . ($uri ? $uri->getPath() : '[none]'));
+
+          try {
+               $output = \App\Services\PdfService::buildPhlebotomyPdf($id);
+          } catch (\RuntimeException $e) {
+               log_message('error', "PdfController::phlebotomyDownload failed: {$e->getMessage()}");
+               return $this->response->setStatusCode(404)->setBody('Phlebotomy checklist entry not found');
+          }
+
+          $inline = $this->request->getGet('inline');
+          $disposition = $inline ? 'inline' : 'attachment';
+          return $this->response
+               ->setStatusCode(200)
+               ->setContentType('application/pdf')
+               ->setHeader('Content-Disposition', "$disposition; filename=\"phlebotomy_{$id}.pdf\"")
+               ->setBody($output);
+     }
+     /**
       * Render the branding‑checklist identified by $id as a PDF.
       */
      public function checklist(int $id)
@@ -48,6 +96,54 @@ class PdfController extends Controller
                ->setStatusCode(200)
                ->setContentType('application/pdf')
                ->setHeader('Content-Disposition', "$disposition; filename=\"checklist_{$id}.pdf\"")
+               ->setBody($output);
+     }
+
+     /**
+      * Downloadable PDF representation of a maintenance entry.
+      */
+     public function maintenanceDownload(int $id)
+     {
+          $uri = $this->request->getUri();
+          log_message('error', 'PdfController::maintenanceDownload invoked, method=' . $this->request->getMethod() . ', path=' . ($uri ? $uri->getPath() : '[none]'));
+
+          try {
+               $output = \App\Services\PdfService::buildMaintenancePdf($id);
+          } catch (\RuntimeException $e) {
+               log_message('error', "PdfController::maintenanceDownload failed: {$e->getMessage()}");
+               return $this->response->setStatusCode(404)->setBody('Maintenance entry not found');
+          }
+
+          $inline = $this->request->getGet('inline');
+          $disposition = $inline ? 'inline' : 'attachment';
+          return $this->response
+               ->setStatusCode(200)
+               ->setContentType('application/pdf')
+               ->setHeader('Content-Disposition', "$disposition; filename=\"maintenance_{$id}.pdf\"")
+               ->setBody($output);
+     }
+
+     /**
+      * Downloadable PDF representation of an IT checklist entry.
+      */
+     public function itDownload(int $id)
+     {
+          $uri = $this->request->getUri();
+          log_message('error', 'PdfController::itDownload invoked, method=' . $this->request->getMethod() . ', path=' . ($uri ? $uri->getPath() : '[none]'));
+
+          try {
+               $output = \App\Services\PdfService::buildItPdf($id);
+          } catch (\RuntimeException $e) {
+               log_message('error', "PdfController::itDownload failed: {$e->getMessage()}");
+               return $this->response->setStatusCode(404)->setBody('IT checklist entry not found');
+          }
+
+          $inline = $this->request->getGet('inline');
+          $disposition = $inline ? 'inline' : 'attachment';
+          return $this->response
+               ->setStatusCode(200)
+               ->setContentType('application/pdf')
+               ->setHeader('Content-Disposition', "$disposition; filename=\"it_checklist_{$id}.pdf\"")
                ->setBody($output);
      }
 }

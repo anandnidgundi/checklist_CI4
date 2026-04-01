@@ -49,6 +49,7 @@ class FormInputsModel extends Model
           'form_id',
           'section_id',
           'sub_section_id',
+          'roles_allowed',
           'status',
      ];
 
@@ -95,6 +96,7 @@ class FormInputsModel extends Model
           'form_id' => 'required|integer',
           'section_id' => 'permit_empty|integer',
           'sub_section_id' => 'permit_empty|integer',
+          'roles_allowed' => 'permit_empty',
           'status' => 'required|in_list[A,I]',
      ];
      protected $validationMessages = [];

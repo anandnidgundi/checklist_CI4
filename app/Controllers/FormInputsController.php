@@ -28,7 +28,7 @@ class FormInputsController extends BaseController
           $formId = (int) $this->request->getGet('form_id');
           $status = strtoupper(trim((string) $this->request->getGet('status')));
           $builder = $this->formInputsModel->builder();
-          $builder->select('id, input_name, input_label, input_icon, input_icon_color, input_col, input_type, input_value, data_source, map_fields, input_placeholder, show_when_field, show_when_value, show_operator, required_when_field, required_when_value, remarks_required_when, photo_required_when, custom_value, input_class, input_required, input_readonly, input_disabled, input_min, input_max, input_step, input_pattern, input_maxlength, input_options, input_order, file_accept, max_file_size, compress_image, form_id, section_id, sub_section_id, status');
+          $builder->select('id, input_name, input_label, input_icon, input_icon_color, input_col, input_type, input_value, data_source, map_fields, input_placeholder, show_when_field, show_when_value, show_operator, required_when_field, required_when_value, remarks_required_when, photo_required_when, custom_value, input_class, input_required, input_readonly, input_disabled, input_min, input_max, input_step, input_pattern, input_maxlength, input_options, input_order, file_accept, max_file_size, compress_image, form_id, section_id, sub_section_id, roles_allowed, status');
 
           if ($formId > 0) {
                $builder->where('form_id', $formId);
@@ -44,6 +44,10 @@ class FormInputsController extends BaseController
           }
           $builder->orderBy('id', 'DESC');
           $rows = $builder->get()->getResultArray();
+          foreach ($rows as &$row) {
+               $row['roles_allowed'] = $this->decodeRolesAllowed($row['roles_allowed'] ?? null);
+          }
+          unset($row);
 
           return $this->respond([
                'status' => true,
@@ -66,6 +70,8 @@ class FormInputsController extends BaseController
           if (!$row) {
                return $this->respond(['status' => false, 'message' => 'Form input not found'], 404);
           }
+
+          $row['roles_allowed'] = $this->decodeRolesAllowed($row['roles_allowed'] ?? null);
 
           return $this->respond(['status' => true, 'data' => $row], 200);
      }
@@ -156,6 +162,7 @@ class FormInputsController extends BaseController
                'form_id' => (int) ($payload['form_id'] ?? 0),
                'section_id' => $normalizeNullableInt($payload['section_id'] ?? null),
                'sub_section_id' => $normalizeNullableInt($payload['sub_section_id'] ?? null),
+               'roles_allowed' => $this->normalizeRolesAllowedForStorage($payload['roles_allowed'] ?? null),
                'status' => $status,
           ];
 
@@ -369,6 +376,9 @@ class FormInputsController extends BaseController
           if (array_key_exists('sub_section_id', $payload)) {
                $data['sub_section_id'] = $normalizeNullableInt($payload['sub_section_id']);
           }
+          if (array_key_exists('roles_allowed', $payload)) {
+               $data['roles_allowed'] = $this->normalizeRolesAllowedForStorage($payload['roles_allowed']);
+          }
           if (array_key_exists('status', $payload)) {
                $status = strtoupper(trim((string) $payload['status']));
                if (!in_array($status, ['A', 'I'], true)) {
@@ -450,6 +460,80 @@ class FormInputsController extends BaseController
 
           $row = $builder->get(1)->getRowArray();
           return (bool) $row;
+     }
+
+     private function normalizeRolesAllowedForStorage($value): ?string
+     {
+          if ($value === null) {
+               return null;
+          }
+
+          if (is_string($value)) {
+               $trimmed = trim($value);
+               if ($trimmed === '') {
+                    return null;
+               }
+
+               $decoded = json_decode($trimmed, true);
+               if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    $value = $decoded;
+               } else {
+                    $value = array_map('trim', explode(',', $trimmed));
+               }
+          }
+
+          if (!is_array($value)) {
+               return null;
+          }
+
+          $roles = [];
+          foreach ($value as $role) {
+               $normalizedRole = trim((string) $role);
+               if ($normalizedRole === '') {
+                    continue;
+               }
+               $roles[] = $normalizedRole;
+          }
+
+          if ($roles === []) {
+               return null;
+          }
+
+          $roles = array_values(array_unique($roles));
+          return json_encode($roles, JSON_UNESCAPED_UNICODE);
+     }
+
+     private function decodeRolesAllowed($value): array
+     {
+          if (is_array($value)) {
+               return array_values(array_filter(array_map(static function ($item) {
+                    return trim((string) $item);
+               }, $value), static function ($item) {
+                    return $item !== '';
+               }));
+          }
+
+          if ($value === null) {
+               return [];
+          }
+
+          $trimmed = trim((string) $value);
+          if ($trimmed === '') {
+               return [];
+          }
+
+          $decoded = json_decode($trimmed, true);
+          if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+               return array_values(array_filter(array_map(static function ($item) {
+                    return trim((string) $item);
+               }, $decoded), static function ($item) {
+                    return $item !== '';
+               }));
+          }
+
+          return array_values(array_filter(array_map('trim', explode(',', $trimmed)), static function ($item) {
+               return $item !== '';
+          }));
      }
 
      private function makeUniqueInputName(string $desired, int $formId, ?int $excludeId = null): array

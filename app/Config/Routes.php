@@ -16,6 +16,26 @@ $routes->GET('backend/index.php', 'Home::index');
 $routes->GET('pdf/download/(:any)', 'PdfController::checklistDownload/$1');
 $routes->GET('backend/pdf/download/(:any)', 'PdfController::checklistDownload/$1');
 
+// maintenance specific PDF download
+$routes->GET('pdf/maintenance_download/(:any)', 'PdfController::maintenanceDownload/$1');
+$routes->GET('backend/pdf/maintenance_download/(:any)', 'PdfController::maintenanceDownload/$1');
+
+// IT checklist specific PDF download
+$routes->GET('pdf/it_download/(:any)', 'PdfController::itDownload/$1');
+$routes->GET('backend/pdf/it_download/(:any)', 'PdfController::itDownload/$1');
+
+// Lab weekly checklist specific PDF download
+$routes->GET('pdf/lab_weekly_download/(:any)', 'PdfController::labWeeklyDownload/$1');
+$routes->GET('backend/pdf/lab_weekly_download/(:any)', 'PdfController::labWeeklyDownload/$1');
+
+// Lab daily checklist specific PDF download
+$routes->GET('pdf/lab_daily_download/(:any)', 'PdfController::labDailyDownload/$1');
+$routes->GET('backend/pdf/lab_daily_download/(:any)', 'PdfController::labDailyDownload/$1');
+
+// Phlebotomy checklist specific PDF download
+$routes->GET('pdf/phlebotomy_download/(:any)', 'PdfController::phlebotomyDownload/$1');
+$routes->GET('backend/pdf/phlebotomy_download/(:any)', 'PdfController::phlebotomyDownload/$1');
+
 
 
 $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
@@ -447,6 +467,12 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      // PDF export for branding checklist (public or secured as needed)
      $routes->match(['GET', 'options'], 'branding-checklist/(:num)/pdf', 'PdfController::checklist/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], 'branding-checklist/(:num)/pdf/download', 'PdfController::checklistDownload/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'it-checklist/(:num)/pdf/download', 'PdfController::itDownload/$1', ['filter' => 'authFilter']);
 
      $routes->GET('pdf/download/(:num)', 'PdfController::checklistDownload/$1', ['filter' => 'authFilter']);
+     $routes->GET('pdf/it_download/(:num)', 'PdfController::itDownload/$1', ['filter' => 'authFilter']);
+
+     // Lab weekly and daily checklist PDF downloads
+     $routes->GET('pdf/lab_weekly_download/(:num)', 'PdfController::labWeeklyDownload/$1', ['filter' => 'authFilter']);
+     $routes->GET('pdf/lab_daily_download/(:num)', 'PdfController::labDailyDownload/$1', ['filter' => 'authFilter']);
 });

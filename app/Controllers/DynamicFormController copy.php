@@ -74,51 +74,6 @@ class DynamicFormController extends BaseController
           return (string) $value;
      }
 
-     private function resolveAuthEmpCode($user): string
-     {
-          if (!is_object($user)) {
-               return '';
-          }
-
-          $candidates = [
-               $user->emp_code ?? null,
-               $user->sub ?? null,
-               $user->username ?? null,
-          ];
-
-          foreach ($candidates as $candidate) {
-               $value = is_scalar($candidate) ? trim((string) $candidate) : '';
-               if ($value !== '') {
-                    return $value;
-               }
-          }
-
-          return '';
-     }
-
-     private function resolveAuthRole($user): string
-     {
-          if (!is_object($user)) {
-               return '';
-          }
-
-          $role = is_scalar($user->role ?? null) ? trim((string) $user->role) : '';
-          return $role === '' ? '' : strtoupper($role);
-     }
-
-     private function canEditSubmission(array $submission, $user): bool
-     {
-          $role = $this->resolveAuthRole($user);
-          $empCode = $this->resolveAuthEmpCode($user);
-          $createdBy = trim((string) ($submission['created_by'] ?? ''));
-
-          if ($empCode !== '' && $createdBy !== '' && $createdBy === $empCode) {
-               return true;
-          }
-
-          return in_array($role, ['SUPER_ADMIN', 'ADMIN', 'AGM_BRANDING'], true);
-     }
-
      private function usesSubmissionTable(): bool
      {
           // New schema mode ONLY when all of these are true:
@@ -495,7 +450,7 @@ class DynamicFormController extends BaseController
                return $this->respond(['message' => 'records array is required'], 400);
           }
 
-          $empCode = $this->resolveAuthEmpCode($auth);
+          $empCode = isset($auth->emp_code) ? trim((string) $auth->emp_code) : '';
           if ($empCode === '') {
                return $this->respond(['message' => 'Invalid token payload (emp_code missing)'], 401);
           }
@@ -790,9 +745,12 @@ class DynamicFormController extends BaseController
                          'params' => [
                               'form_id' => $formId,
                               'dept_id' => $deptId,
-                              'rows_inserted' => count($rows),
-                              'submission_id' => $useSubmissionTable ? $numericSubmissionId : $submissionUuid,
+                              'inserted' => count($rows),
                               'submission_uuid' => $submissionUuid,
+                              'submission_id' => $useSubmissionTable ? $numericSubmissionId : $submissionUuid,
+                              'header' => $header,
+                              'status' => $status,
+                              'user_role' => $auth->role ?? null,
                          ],
                          'ip_address' => $this->request->getIPAddress(),
                          'time' => time(),
@@ -1046,12 +1004,14 @@ class DynamicFormController extends BaseController
           $header = $payload['header'] ?? null;
           $status = isset($payload['status']) ? trim((string) $payload['status']) : null;
 
-          $empCode = $this->resolveAuthEmpCode($user);
+          $empCode = $user->emp_code ?? $user->username ?? '';
+          $empCode = is_string($empCode) ? trim($empCode) : '';
           if ($empCode === '') {
                return $this->respond(['message' => 'Invalid token payload (emp_code missing)'], 401);
           }
 
-          $role = $this->resolveAuthRole($user);
+          $role = $user->role ?? '';
+          $isAdmin = in_array($role, ['SUPER_ADMIN', 'ADMIN'], true);
 
           $useSubmissionTable = $this->usesSubmissionTable();
 
@@ -1065,7 +1025,7 @@ class DynamicFormController extends BaseController
                          $db->transRollback();
                          return $this->respond(['message' => 'Not found'], 404);
                     }
-                    if (!$this->canEditSubmission($sub, $user)) {
+                    if (!$isAdmin && (string) ($sub['created_by'] ?? '') !== $empCode) {
                          $db->transRollback();
                          return $this->respond(['message' => 'Forbidden'], 403);
                     }
@@ -1242,12 +1202,7 @@ class DynamicFormController extends BaseController
                     $lm->insertLog([
                          'uri' => $this->request->getURI()->getPath(),
                          'method' => $this->request->getMethod(),
-                         'params' => [
-                              'submission_id' => $sid,
-                              'status' => $status,
-                              'updated_fields' => isset($payload['records']) ? 'records' : 'header',
-                              'user_role' => $user->role ?? null,
-                         ],
+                         'params' => ['submission_id' => $sid, 'header' => $header, 'status' => $status, 'user_role' => $user->role ?? null],
                          'ip_address' => $this->request->getIPAddress(),
                          'time' => time(),
                          'authorized' => 'Y',
@@ -1555,48 +1510,6 @@ class DynamicFormController extends BaseController
                     $formName = '';
                }
                $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
-
-               // Broaden IT checklist detection to include all possible event key variants
-               $isItChecklistFlow = (
-                    strpos($eventKeyLc, 'it_checklist') !== false
-                    || strpos($eventKeyLc, 'it-checklist') !== false
-                    || strpos($eventKeyLc, 'it checklist') !== false
-                    || strpos($eventKeyLc, 'itchecklistformdata') !== false // for event key as in screenshot
-               );
-
-               $isLabDailyChecklistFlow = (
-                    strpos($eventKeyLc, 'labdailychecklistformdata') !== false
-                    || strpos($eventKeyLc, 'labdailychecklist') !== false
-                    || strpos($eventKeyLc, 'lab_daily_checklist') !== false
-                    || strpos($eventKeyLc, 'phlebotomychecklistformdata') !== false
-                    || strpos($eventKeyLc, 'phlebotomy_checklist') !== false
-                    || stripos($formName, 'phlebotomy') !== false
-                    || stripos($formName, 'lab daily') !== false
-               );
-
-               $isLabWeeklyChecklistFlow = (
-                    strpos($eventKeyLc, 'labweeklychecklistformdata') !== false
-                    || strpos($eventKeyLc, 'labweeklychecklist') !== false
-                    || strpos($eventKeyLc, 'lab_weekly_checklist') !== false
-                    || stripos($formName, 'lab weekly') !== false
-               );
-
-               // Enforce correct template for specific lab flows if current template is wrong
-               if ($isLabDailyChecklistFlow && (!isset($tmpl['event_key']) || strtolower(trim((string)$tmpl['event_key'])) !== 'labdailychecklistformdata')) {
-                    $maybe = $db->table('email_templates')->where('event_key', 'labDailyChecklistFormData')->get()->getRowArray();
-                    if ($maybe) {
-                         $tmpl = $maybe;
-                         $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
-                    }
-               }
-               if ($isLabWeeklyChecklistFlow && (!isset($tmpl['event_key']) || strtolower(trim((string)$tmpl['event_key'])) !== 'labweeklychecklistformdata')) {
-                    $maybe = $db->table('email_templates')->where('event_key', 'labWeeklyChecklistFormData')->get()->getRowArray();
-                    if ($maybe) {
-                         $tmpl = $maybe;
-                         $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
-                    }
-               }
-
                $isMaintenanceForm = (stripos($formName, 'maintenance') !== false);
                if (!$isMaintenanceForm) {
                     if (strpos($eventKeyLc, 'branding') !== false) {
@@ -1605,7 +1518,6 @@ class DynamicFormController extends BaseController
                          $isMaintenanceForm = true;
                     }
                }
-
                $vars['form_name'] = $formName;
                $vars['pdf_type'] = $isMaintenanceForm ? 'maintenance' : 'checklist';
                $vars['is_maintenance_form'] = $isMaintenanceForm ? '1' : '0';
@@ -1623,10 +1535,8 @@ class DynamicFormController extends BaseController
                     $vars['branch_id'] = $header['branch_id'] ?? null;
                     $vars['branch_manager'] = $header['branch_manager'] ?? null;
                     // expose emails from header (if client included them) so templates/EmailController can use them
-                    if (!($isItChecklistFlow || $isLabDailyChecklistFlow || $isLabWeeklyChecklistFlow)) {
-                         $vars['branch_manager_email'] = $header['branch_manager_email'] ?? null;
-                         $vars['branch_email'] = $header['branch_email'] ?? null;
-                    }
+                    $vars['branch_manager_email'] = $header['branch_manager_email'] ?? null;
+                    $vars['branch_email'] = $header['branch_email'] ?? null;
                     $vars['contact'] = $header['contact'] ?? null;
                     $vars['centre_name'] = $header['centre_name'] ?? $header['branch_name'] ?? null;
 
@@ -1805,93 +1715,71 @@ class DynamicFormController extends BaseController
                     }
                }
 
-               // Resolve recipients.
-               // IT / Lab Daily / Lab Weekly flows are intentionally isolated to dedicated TO mailbox + template-defined CCs only.
+               // Resolve branch emails (prefer branch lookup when branch_id present in header)
                $recipients = [];
-               $customTo = '';
-               if ($isItChecklistFlow) {
-                    $customTo = trim((string)(getenv('IT_CHECKLIST_TO_EMAIL') ?: ''));
-               } elseif ($isLabDailyChecklistFlow) {
-                    $customTo = trim((string)(getenv('LAB_MANAGER_DAILY_CHECKLIST_TO_EMAIL') ?: ''));
-               } elseif ($isLabWeeklyChecklistFlow) {
-                    $customTo = trim((string)(getenv('LAB_MANAGER_WEEKLY_CHECKLIST_TO_EMAIL') ?: ''));
-               }
+               if (is_array($header) && !empty($header['branch_id'])) {
+                    try {
+                         $branchModel = model(\App\Models\BranchModel::class);
+                         $b = $branchModel->getBranchDetails($header['branch_id']);
 
-               if ($customTo !== '') {
-                    if (filter_var($customTo, FILTER_VALIDATE_EMAIL)) {
-                         $recipients[] = ['email' => $customTo, 'name' => ''];
-                    } else {
-                         log_message('error', 'triggerSubmissionEmailOnSave: custom checklist TO email not configured/invalid: ' . $customTo);
-                    }
-               }
-
-               $isSpecialChecklistFlow = ($isItChecklistFlow || $isLabDailyChecklistFlow || $isLabWeeklyChecklistFlow);
-               if (!$isSpecialChecklistFlow) {
-                    // Resolve branch emails (prefer branch lookup when branch_id present in header)
-                    if (is_array($header) && !empty($header['branch_id'])) {
+                         // Debug: record branch lookup result
                          try {
-                              $branchModel = model(\App\Models\BranchModel::class);
-                              $b = $branchModel->getBranchDetails($header['branch_id']);
-
-                              // Debug: record branch lookup result
-                              try {
-                                   file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] branch_lookup: " . json_encode([$header['branch_id'], $b]) . "\n", FILE_APPEND);
-                              } catch (\Throwable $__dbg) {
-                              }
-
-                              // expose branch emails into template variables (so sendTemplate can pick them up from $data)
-                              if (empty($vars['branch_manager_email']) && !empty($b['branch_manager_email'])) {
-                                   $vars['branch_manager_email'] = $b['branch_manager_email'];
-                              }
-                              if (empty($vars['branch_email']) && !empty($b['branch_email'])) {
-                                   $vars['branch_email'] = $b['branch_email'];
-                              }
-
-                              if (!empty($b['branch_manager_email'])) $recipients[] = ['email' => $b['branch_manager_email'], 'name' => $b['branch_manager_name'] ?? ''];
-                              if (!empty($b['branch_email'])) $recipients[] = ['email' => $b['branch_email'], 'name' => $b['branch_name'] ?? ''];
-                         } catch (\Throwable $e) {
-                              log_message('error', 'triggerSubmissionEmailOnSave: branch lookup failed: ' . $e->getMessage());
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] branch_lookup: " . json_encode([$header['branch_id'], $b]) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
                          }
+
+                         // expose branch emails into template variables (so sendTemplate can pick them up from $data)
+                         if (empty($vars['branch_manager_email']) && !empty($b['branch_manager_email'])) {
+                              $vars['branch_manager_email'] = $b['branch_manager_email'];
+                         }
+                         if (empty($vars['branch_email']) && !empty($b['branch_email'])) {
+                              $vars['branch_email'] = $b['branch_email'];
+                         }
+
+                         if (!empty($b['branch_manager_email'])) $recipients[] = ['email' => $b['branch_manager_email'], 'name' => $b['branch_manager_name'] ?? ''];
+                         if (!empty($b['branch_email'])) $recipients[] = ['email' => $b['branch_email'], 'name' => $b['branch_name'] ?? ''];
+                    } catch (\Throwable $e) {
+                         log_message('error', 'triggerSubmissionEmailOnSave: branch lookup failed: ' . $e->getMessage());
                     }
+               }
 
-                    // If no branch recipients found, attempt to use header 'to' like fields if provided
-                    if (empty($recipients) && is_array($header)) {
-                         if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
-                              $recipients[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
-                         }
-                         if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
-                              $recipients[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
-                         }
+               // If no branch recipients found, attempt to use header 'to' like fields if provided
+               if (empty($recipients) && is_array($header)) {
+                    if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
+                         $recipients[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
                     }
+                    if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
+                         $recipients[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
+                    }
+               }
 
-                    // ALWAYS include explicit header-provided branch emails (frontend-supplied) in recipients so
-                    // the frontend can force delivery to branch manager even when branch lookup returns other addresses.
-                    if (is_array($header)) {
-                         $explicit = [];
-                         if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
-                              $explicit[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
-                         }
-                         if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
-                              $explicit[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
-                         }
-                         if (!empty($explicit)) {
-                              // merge and dedupe by email
-                              $all = array_merge($recipients, $explicit);
-                              $seen = [];
-                              $recipients = [];
-                              foreach ($all as $row) {
-                                   $em = trim((string)($row['email'] ?? ''));
-                                   if (! $em || ! filter_var($em, FILTER_VALIDATE_EMAIL)) continue;
-                                   if (in_array($em, $seen, true)) continue;
-                                   $seen[] = $em;
-                                   $recipients[] = ['email' => $em, 'name' => $row['name'] ?? ''];
-                              }
+               // ALWAYS include explicit header-provided branch emails (frontend-supplied) in recipients so
+               // the frontend can force delivery to branch manager even when branch lookup returns other addresses.
+               if (is_array($header)) {
+                    $explicit = [];
+                    if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
+                         $explicit[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
+                    }
+                    if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
+                         $explicit[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
+                    }
+                    if (!empty($explicit)) {
+                         // merge and dedupe by email
+                         $all = array_merge($recipients, $explicit);
+                         $seen = [];
+                         $recipients = [];
+                         foreach ($all as $row) {
+                              $em = trim((string)($row['email'] ?? ''));
+                              if (! $em || ! filter_var($em, FILTER_VALIDATE_EMAIL)) continue;
+                              if (in_array($em, $seen, true)) continue;
+                              $seen[] = $em;
+                              $recipients[] = ['email' => $em, 'name' => $row['name'] ?? ''];
                          }
                     }
                }
 
                // Fallback: if still no recipients, try template's cc_emails (treat as primary recipients)
-               if (!$isItChecklistFlow && empty($recipients) && !empty($tmpl['cc_emails'])) {
+               if (empty($recipients) && !empty($tmpl['cc_emails'])) {
                     $parts = is_array($tmpl['cc_emails']) ? $tmpl['cc_emails'] : preg_split('/[,;\s]+/', (string) $tmpl['cc_emails']);
                     foreach ($parts as $p) {
                          $p = trim((string)$p);
@@ -1931,14 +1819,6 @@ class DynamicFormController extends BaseController
                     try {
                          // ask the mailer to generate a form-appropriate PDF from submission data
                          $vars['checklist_id'] = $submissionId;
-                         if ($isSpecialChecklistFlow) {
-                              // IT/Lab Daily/Lab Weekly: do not include branch CCs.
-                              unset($vars['branch_manager_email'], $vars['branch_email']);
-                              $vars['include_branch_cc'] = '0';
-                              $ccList = null;
-                         } else {
-                              $vars['include_branch_cc'] = '1';
-                         }
                          $res = $emailController->sendTemplate($tmpl['event_key'], $toEmail, $toName, $vars, null, $ccList, null);
                          $resText = strtolower(trim((string)$res));
                          $emailSentOk = ($resText === 'email sent' || strpos($resText, 'email sent') !== false);
