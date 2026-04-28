@@ -6,41 +6,232 @@
           <title>Lab Manager Checklist <?= esc($phlebotomy['id'] ?? '') ?></title>
           <style>
           body {
-               font-family: Arial, Helvetica, sans-serif;
+               font-family: "Helvetica Neue", Arial, sans-serif;
+               color: #1f2937;
+               background: #ffffff;
+               margin: 0;
+               padding: 0;
+               line-height: 1.25;
                font-size: 12px;
+          }
+
+          .pdf-wrapper {
+               max-width: 920px;
+               margin: 0 auto;
+               padding: 2px 4px 4px;
+          }
+
+          .pdf-header {
+               display: flex;
+               align-items: center;
+               justify-content: flex-start;
+               gap: 8px;
+               padding-bottom: 6px;
+               margin-bottom: 6px;
+               border-bottom: 1px solid #0f4c81;
+               text-align: left;
+               width: 100%;
+          }
+
+          .header-left {
+               flex: 0 0 auto;
+               display: flex;
+               align-items: center;
+          }
+
+          .header-left img {
+               max-height: 28px;
+               display: block;
+               margin: 0;
+          }
+
+          .tableNoBorder {
+               width: 100%;
+               border-collapse: collapse;
+               border: none;
+          }
+
+          .logo {
+               max-height: 28px;
+               display: block;
+               margin: 0;
+          }
+
+          .header-right {
+               flex: 1 1 auto;
+               min-width: 0;
+               margin-left: auto;
+               display: flex;
+               flex-direction: column;
+               align-items: flex-end;
+               justify-content: center;
+          }
+
+          .company-name {
+               font-size: 14px;
+               font-weight: 700;
+               color: #0f4c81;
+               text-transform: uppercase;
+               letter-spacing: 0.04em;
+               margin: 0;
+          }
+
+          .title {
+               font-size: 11px;
+               color: #111827;
+               margin: 1px 0 0;
+               letter-spacing: 0.03em;
+          }
+
+          .summary-card {
+               background: none;
+               border: none;
+               border-radius: 0;
+               padding: 0;
+               margin-bottom: 8px;
+               box-shadow: none;
           }
 
           table {
                width: 100%;
                border-collapse: collapse;
-               margin-bottom: 12px;
+               margin-bottom: 6px;
           }
 
           th,
           td {
-               padding: 4px 6px;
-               border: 1px solid #ccc;
+               padding: 2px 5px;
+               border: 1px solid #d2d7df;
                vertical-align: top;
+               font-size: 10px;
           }
 
           .header-table th {
-               background: #f0f0f0;
-               width: 160px;
+               background: #e9f1fb;
+               width: 16%;
+               min-width: 100px;
                text-align: left;
+               color: #0f4c81;
+               padding: 2px 6px;
           }
 
-          h2,
-          h3 {
-               margin: 8px 0;
+          .header-table td {
+               background: #ffffff;
+               width: 34%;
+               padding: 2px 6px;
+          }
+
+          .critical-status {
+               color: #c0392b;
+               font-weight: 600;
+          }
+
+          table[class=""] {
+               border: none;
+          }
+
+          table[class=""] th,
+          table[class=""] td {
+               border: none;
+               padding: 0;
+          }
+
+          .item-table th {
+               background: #bcdbf7;
+               color: #141414;
+               text-align: left;
+               font-size: 12px;
+               padding: 4px;
+          }
+
+          .item-table th:first-child,
+          .item-table td:first-child {
+               width: 260px;
+               white-space: normal;
+               overflow-wrap: break-word;
+               word-wrap: break-word;
+          }
+
+          .item-table td {
+               padding: 5px;
+          }
+
+          .item-table tbody tr:nth-child(odd) {
+               background: #fbfdff;
+
+          }
+
+          .item-table {
+               margin-bottom: 0.35rem;
+          }
+
+          .section-title {
+               margin: 8px 0 4px;
+               font-size: 14px;
+               color: #0f4c81;
+               border-left: 4px solid #0f4c81;
+               padding-left: 8px;
+          }
+
+          .subsection-title {
+               margin: 8px 0 4px 16px;
+               padding-left: 6px;
+               font-size: 12px;
+               color: #1f3d6e;
+               font-weight: 600;
+          }
+
+          .record-entry {
+               margin: 0 0 0.3rem 24px;
+               line-height: 1.15;
+               font-size: 11px;
+          }
+
+          .attachment-wrapper {
+               margin: 10px 0;
+               page-break-inside: avoid;
+               break-inside: avoid;
+          }
+
+          .attachment-wrapper img {
+               max-width: 80%;
+               max-height: 360px;
+               width: auto;
+               display: block;
+               margin: 0 auto;
           }
 
           .page-break {
                page-break-before: always;
+               margin-top: 24px;
           }
 
           img {
                max-width: 100%;
                height: auto;
+               display: block;
+               margin: 0 auto;
+          }
+
+          .record-entry {
+               margin: 0 0 0.3rem;
+               line-height: 1.2;
+               font-size: 11px;
+               padding-left: 5rem;
+          }
+
+          .record-entry span {
+               color: #333;
+          }
+
+          .record-entry strong {
+               font-weight: 600;
+          }
+
+          @media print {
+               .pdf-wrapper {
+                    padding: 0;
+               }
           }
 
           </style>
@@ -116,6 +307,52 @@
           $s = str_replace(['_', '-'], ' ', $s);
           return ucwords(trim($s));
      };
+     $formatDate = function ($rawDate) {
+          if ($rawDate === null || $rawDate === '') {
+               return '';
+          }
+
+          if ($rawDate instanceof \DateTimeInterface) {
+               return $rawDate->format('d-m-Y');
+          }
+
+          if (is_numeric($rawDate)) {
+               $date = date_create('@' . (int)$rawDate);
+               if ($date !== false) {
+                    return $date->format('d-m-Y');
+               }
+          }
+
+          $date = date_create(trim((string)$rawDate));
+          if ($date !== false) {
+               return $date->format('d-m-Y');
+          }
+
+          return trim((string)$rawDate);
+     };
+
+     $formatDateTime = function ($rawDateTime) {
+          if ($rawDateTime === null || $rawDateTime === '') {
+               return '';
+          }
+          if ($rawDateTime instanceof \DateTimeInterface) {
+               return $rawDateTime->format('d-m-Y H:i:s');
+          }
+          if (is_numeric($rawDateTime)) {
+               $date = date_create('@' . (int)$rawDateTime);
+               if ($date !== false) {
+                    return $date->format('d-m-Y H:i:s');
+               }
+          }
+          $date = date_create(trim((string)$rawDateTime));
+          if ($date !== false) {
+               return $date->format('d-m-Y H:i:s');
+          }
+          return trim((string)$rawDateTime);
+     };
+
+     $createdDtmRaw = $phlebotomy['created_dtm'] ?? $phlebotomy['createdDTM'] ?? $phlebotomy['created_at'] ?? '';
+     $createdDtmDisplay = $createdDtmRaw ? $formatDateTime($createdDtmRaw) : '';
 
      $formatInputValue = function ($raw) {
           if ($raw === null) return '';
@@ -156,68 +393,108 @@
 
           return $text;
      };
+
+     $isCriticalValue = function ($text) {
+          $needle = strtolower(trim((string)$text));
+          $needle = str_replace('_', ' ', $needle);
+          $needle = preg_replace('/\s+/', ' ', $needle);
+          return in_array($needle, [
+               'repairs needed',
+               'not working',
+               'not done',
+               'pending',
+               'not satisfactory',
+               'no',
+               'not acceptable',
+               'not checked',
+               'compliant',
+               'not functional',
+               'not shared',
+          ], true);
+     };
      ?>
 
-          <div style="text-align:center; margin-bottom:12px; background:#f0f0f0; padding:8px;">
-               <?php if ($logoSrc): ?>
-               <img src="<?= esc($logoSrc) ?>" alt="logo" style="max-height:60px;" />
-               <div style="font-size:16px; font-weight:bold; margin-top:4px;">Vijaya Diagnostic Centre Limited</div>
-               <?php else: ?>
-               <div style="font-size:16px; font-weight:bold;">Vijaya Diagnostic Centre Limited</div>
-               <?php endif; ?>
-          </div>
+          <div class="pdf-wrapper">
+               <div class="pdf-header">
+                    <table>
+                         <tr>
+                              <td style="border:none; padding:0;">
 
-          <h2>Lab Manager Checklist</h2>
+                                   <?php if ($logoSrc): ?>
+                                   <img src="<?= esc($logoSrc) ?>" class="logo" alt="logo" />
+                                   <?php endif; ?>
 
-          <table class="header-table">
-               <?php foreach (
-               [
+                              </td>
+                              <td style="border:none; padding:0;  ">
+
+                                   <div class="company-name">Vijaya Diagnostic Centre Limited</div>
+                                   <div class="title">Lab Manager Checklist</div>
+
+                              </td>
+                         </tr>
+                    </table>
+               </div>
+
+               <div class="summary-card">
+                    <?php
+               $auditedBy = trim((string) ($phlebotomy['audited_by'] ?? ''));
+               $auditedByMobile = trim((string) ($phlebotomy['audited_by_mobile'] ?? $phlebotomy['audited_by_phone'] ?? $phlebotomy['audited_by_contact'] ?? ''));
+               $visitedBy = $auditedBy;
+               if ($auditedByMobile !== '') {
+                    $visitedBy = $visitedBy !== '' ? "{$visitedBy} ({$auditedByMobile})" : $auditedByMobile;
+               }
+               $summaryData = [
                     'Centre Name' => $phlebotomy['centre_name'] ?? '',
                     'Location' => $phlebotomy['location'] ?? '',
-                    'Date of Visit' => $phlebotomy['date_of_visit'] ?? '',
+                    'Date of Visit' => $formatDate($phlebotomy['date_of_visit'] ?? ''),
                     'Visit Time' => $phlebotomy['visit_time'] ?? '',
-                    'Audited By' => $phlebotomy['audited_by'] ?? '',
+                    'Visited By' => $visitedBy,
                     'Branch Manager' => $phlebotomy['branch_manager'] ?? '',
                     'Cluster Manager' => $phlebotomy['cluster_manager'] ?? '',
                     'Contact' => $phlebotomy['contact'] ?? '',
                     'Notes' => $phlebotomy['notes'] ?? '',
-               ] as $label => $value
-          ): ?>
-               <?php if ($value !== null && $value !== ''): ?>
-               <tr>
-                    <th><?= esc($label) ?></th>
-                    <td><?= esc($value) ?></td>
-               </tr>
+               ];
+               $summaryItems = [];
+               foreach ($summaryData as $label => $value) {
+                    if ($value !== null && $value !== '') {
+                         $summaryItems[] = ['label' => $label, 'value' => $value];
+                    }
+               }
+               ?>
+                    <table class="header-table">
+                         <?php for ($i = 0; $i < count($summaryItems); $i += 2): ?>
+                         <tr>
+                              <th><?= esc($summaryItems[$i]['label']) ?></th>
+                              <td><?= esc($summaryItems[$i]['value']) ?></td>
+                              <?php if (isset($summaryItems[$i + 1])): ?>
+                              <th><?= esc($summaryItems[$i + 1]['label']) ?></th>
+                              <td><?= esc($summaryItems[$i + 1]['value']) ?></td>
+                              <?php else: ?>
+                              <th></th>
+                              <td></td>
+                              <?php endif; ?>
+                         </tr>
+                         <?php endfor; ?>
+                    </table>
+               </div>
+
+               <?php if (!empty($phlebotomy['records'])): ?>
+               <?php
+               $grouped = [];
+               foreach ($phlebotomy['records'] as $r) {
+                    $sec = $r['section_name'] ?? $r['section'] ?? 'Unspecified';
+                    $sub = $r['sub_section_name'] ?? $r['sub_section'] ?? '';
+                    $grouped[$sec][$sub][] = $r;
+               }
+               ?>
+
+               <?php foreach ($grouped as $sec => $subs): ?>
+               <h5 class="section-title"><?= esc($sec) ?></h5>
+               <?php foreach ($subs as $sub => $rows): ?>
+               <?php if ($sub !== ''): ?>
+               <b class="subsection-title"><?= esc($sub) ?></b>
                <?php endif; ?>
-               <?php endforeach; ?>
-          </table>
-
-          <?php if (!empty($phlebotomy['records'])): ?>
-          <h3>Checklist Items</h3>
-          <?php
-          $grouped = [];
-          foreach ($phlebotomy['records'] as $r) {
-               $sec = $r['section_name'] ?? $r['section'] ?? 'Unspecified';
-               $sub = $r['sub_section_name'] ?? $r['sub_section'] ?? '';
-               $grouped[$sec][$sub][] = $r;
-          }
-          ?>
-
-          <?php foreach ($grouped as $sec => $subs): ?>
-          <h4 style="margin-top:16px;"><strong><?= esc($sec) ?></strong></h4>
-          <?php foreach ($subs as $sub => $rows): ?>
-          <?php if ($sub !== ''): ?>
-          <h5 style="margin-top:8px; margin-left:12px; font-weight:normal;"><?= esc($sub) ?></h5>
-          <?php endif; ?>
-
-          <table>
-               <thead>
-                    <tr>
-                         <th>Item</th>
-                         <th>Value</th>
-                    </tr>
-               </thead>
-               <tbody>
+               <table>
                     <?php foreach ($rows as $r): ?>
                     <?php
                                    $rawLabel = $r['input_label'] ?? $r['input_name'] ?? $r['item_label'] ?? '';
@@ -226,57 +503,99 @@
                                         $displayLabel = $humanize($r['input_name']);
                                    }
                                    $displayValue = $formatInputValue($r['input_value'] ?? $r['response'] ?? '');
+                                   $criticalRaw = trim((string)($r['input_value'] ?? $r['response'] ?? ''));
+                                   $criticalDisplay = trim((string)$displayValue);
+                                   $isCritical = $isCriticalValue($criticalRaw) || $isCriticalValue($criticalDisplay);
                                    ?>
                     <tr>
-                         <td><?= esc($displayLabel) ?></td>
-                         <td><?= nl2br(esc($displayValue)) ?></td>
+                         <td style="width:60%;"><?= esc($displayLabel) ?>:</td>
+                         <td><strong
+                                   class="<?= $isCritical ? 'critical-status' : '' ?>"><?= nl2br(esc($displayValue)) ?></strong>
+                         </td>
                     </tr>
                     <?php endforeach; ?>
-               </tbody>
-          </table>
-          <?php endforeach; ?>
-          <?php endforeach; ?>
-          <?php endif; ?>
+               </table>
 
-          <?php
-     foreach (($phlebotomy['records'] ?? []) as $r) {
-          $files = [];
-          if (!empty($r['attachments'])) {
-               if (is_array($r['attachments'])) {
-                    $files = $r['attachments'];
-               } else {
-                    $files = preg_split('/\s*,\s*/', (string) $r['attachments'], -1, PREG_SPLIT_NO_EMPTY);
+               <?php endforeach; ?>
+               <?php endforeach; ?>
+               <?php endif; ?>
+
+               <?php
+          $branchNameDisplay = trim((string) ($phlebotomy['branch_name'] ?? $phlebotomy['centre_name'] ?? ''));
+          $renderedPhotoFiles = [];
+          foreach (($phlebotomy['records'] ?? []) as $r) {
+               $files = [];
+               if (!empty($r['attachments'])) {
+                    if (is_array($r['attachments'])) {
+                         $files = $r['attachments'];
+                    } else {
+                         $files = preg_split('/\s*,\s*/', (string) $r['attachments'], -1, PREG_SPLIT_NO_EMPTY);
+                    }
                }
-          }
 
-          foreach ($files as $fn) {
-               $src = $makeSrc($fn);
-               if (!$src) {
-                    continue;
-               }
-     ?>
-          <div class="page-break"></div>
-          <div style="margin:16px 0;">
-               <img src="<?= esc($src) ?>" alt="attachment" />
-          </div>
-          <?php
-          }
-     }
-     ?>
-
-          <?php if (!empty($phlebotomy['photos'])): ?>
-          <div class="page-break"></div>
-          <h3>Photos</h3>
-          <?php foreach ($phlebotomy['photos'] as $p):
-               $fn = $p['url'] ?? $p['filename'] ?? $p['photo'] ?? $p['file'] ?? '';
-               $src = $makeSrc($fn);
-               if (!$src) continue;
+               foreach ($files as $fn) {
+                    $filename = basename((string)$fn);
+                    if ($filename === '' || in_array($filename, $renderedPhotoFiles, true)) {
+                         continue;
+                    }
+                    $renderedPhotoFiles[] = $filename;
+                    $src = $makeSrc($fn);
+                    if (!$src) {
+                         continue;
+                    }
           ?>
-          <div style="margin-bottom:16px;">
-               <img src="<?= esc($src) ?>" alt="photo" />
+               <div class="attachment-wrapper">
+                    <img src="<?= esc($src) ?>" alt="attachment" />
+                    <?php if ($createdDtmDisplay || $branchNameDisplay !== ''): ?>
+                    <?php
+                              $photoMeta = [];
+                              if ($createdDtmDisplay) {
+                                   $photoMeta[] = 'Photo uploaded on ' . $createdDtmDisplay;
+                              }
+                              if ($branchNameDisplay !== '') {
+                                   $photoMeta[] = 'Branch: ' . $branchNameDisplay;
+                              }
+                              ?>
+                    <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                    </div>
+                    <?php endif; ?>
+               </div>
+               <?php
+               }
+          }
+          ?>
+
+               <?php if (!empty($phlebotomy['photos'])): ?>
+               <?php foreach ($phlebotomy['photos'] as $p):
+                    $fn = $p['url'] ?? $p['filename'] ?? $p['photo'] ?? $p['file'] ?? '';
+                    $filename = basename((string)$fn);
+                    if ($filename === '' || in_array($filename, $renderedPhotoFiles, true)) {
+                         continue;
+                    }
+                    $renderedPhotoFiles[] = $filename;
+                    $src = $makeSrc($fn);
+                    if (!$src) continue;
+               ?>
+               <div style="margin-bottom:16px; page-break-inside: avoid;">
+                    <img src="<?= esc($src) ?>" alt="photo"
+                         style="max-height:640px; width:auto; display:block; margin:auto;" />
+                    <?php if ($createdDtmDisplay || $branchNameDisplay !== ''): ?>
+                    <?php
+                              $photoMeta = [];
+                              if ($createdDtmDisplay) {
+                                   $photoMeta[] = 'Photo uploaded on ' . $createdDtmDisplay;
+                              }
+                              if ($branchNameDisplay !== '') {
+                                   $photoMeta[] = 'Branch: ' . $branchNameDisplay;
+                              }
+                              ?>
+                    <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                    </div>
+                    <?php endif; ?>
+               </div>
+               <?php endforeach; ?>
+               <?php endif; ?>
           </div>
-          <?php endforeach; ?>
-          <?php endif; ?>
      </body>
 
 </html>

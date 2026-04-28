@@ -6,129 +6,51 @@ use Dompdf\Dompdf;
 
 class PdfService
 {
-     public static function buildPhlebotomyPdf(int $id): string
-     {
-          $db = \Config\Database::connect();
-          $check = $db->table('form_submissions')->where('id', $id)->get()->getRowArray();
-          // Debug: log the result of the DB query
-          log_message('error', 'DEBUG buildPhlebotomyPdf: $check = ' . print_r($check, true));
-          if (empty($check)) {
-               throw new \RuntimeException("Phlebotomy checklist entry {$id} not found");
-          }
-
-          // decode header JSON (this contains the centre_name/location/etc)
-          if (!empty($check['header'])) {
-               $hdr = json_decode($check['header'], true);
-               if (is_array($hdr)) {
-                    $check = array_merge($check, $hdr);
-               }
-          }
-
-          // import hack (if needed)
-          if (!empty($check['centre_name']) && preg_match('/Imported from dynamic-form\\s*(\\d+)/i', $check['centre_name'], $m)) {
-               $imported = (int) $m[1];
-               if ($imported) {
-                    try {
-                         $sub = $db->table('form_submissions')->select('header')
-                              ->where('id', $imported)->get()->getRowArray();
-                         if ($sub && !empty($sub['header'])) {
-                              $hdr = json_decode($sub['header'], true);
-                              if (is_array($hdr)) {
-                                   $check = array_merge($check, $hdr);
-                              }
-                         }
-                    } catch (\Throwable $e) {
-                         // fail silently
-                    }
-               }
-          }
-
-          // fetch associated records from form_records, joining metadata for labels and section names
-          $records = [];
-          try {
-               $records = $db->table('form_records')
-                    ->select('form_records.*, fi.input_name, fi.input_label')
-                    ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left')
-                    ->where('form_records.submission_id', $id)
-                    ->orderBy('form_records.id', 'asc')
-                    ->get()
-                    ->getResultArray();
-
-               if (!empty($records)) {
-                    $sectionIds = array_unique(array_filter(array_map(fn($r) => isset($r['section_id']) ? (int)$r['section_id'] : 0, $records)));
-                    $subIds = array_unique(array_filter(array_map(fn($r) => isset($r['sub_section_id']) ? (int)$r['sub_section_id'] : 0, $records)));
-
-                    $sectionMap = [];
-                    if (!empty($sectionIds)) {
-                         $secs = $db->table('form_sections')
-                              ->select('section_id,section_name')
-                              ->whereIn('section_id', $sectionIds)
-                              ->get()->getResultArray();
-                         foreach ($secs as $s) {
-                              $sectionMap[(int)$s['section_id']] = $s['section_name'] ?? null;
-                         }
-                    }
-
-                    $subSectionMap = [];
-                    if (!empty($subIds)) {
-                         $subs = $db->table('form_sub_sections')
-                              ->select('sub_section_id,sub_section_name')
-                              ->whereIn('sub_section_id', $subIds)
-                              ->get()->getResultArray();
-                         foreach ($subs as $ss) {
-                              $subSectionMap[(int)$ss['sub_section_id']] = $ss['sub_section_name'] ?? null;
-                         }
-                    }
-
-                    foreach ($records as &$r) {
-                         $sid = isset($r['section_id']) ? (int)$r['section_id'] : 0;
-                         $subid = isset($r['sub_section_id']) ? (int)$r['sub_section_id'] : 0;
-                         if ($sid && isset($sectionMap[$sid])) {
-                              $r['section_name'] = $sectionMap[$sid];
-                         }
-                         if ($subid && isset($subSectionMap[$subid])) {
-                              $r['sub_section_name'] = $subSectionMap[$subid];
-                         }
-                    }
-                    unset($r);
-               }
-          } catch (\Throwable $e) {
-               // log_message('error', 'PdfService::buildPhlebotomyPdf failed to load records: ' . $e->getMessage());
-          }
-
-          // attach records into the payload so view continues to work
-          $check['records'] = $records;
-
-          // photos (optional)
-          try {
-               $photos = $db->table('branding_photos')
-                    ->where('checklist_id', $id)
-                    ->get()
-                    ->getResultArray();
-               if (!empty($photos)) {
-                    $check['photos'] = $photos;
-               }
-          } catch (\Throwable $__e) {
-               // ignore
-          }
-
-          $data['phlebotomy'] = $check;
-          $html = view('phlebotomy_pdf', $data);
-          $pdf = new Dompdf();
-          $pdf->loadHtml($html);
-          $pdf->setPaper('A4', 'portrait');
-          $pdf->render();
-
-          return $pdf->output();
-     }
 
      /**
-      * Build a PDF for a lab weekly checklist and return raw bytes.
-      *
-      * @param int $id
-      * @return string PDF data
-      * @throws \RuntimeException if lab weekly submission not found
+      * Helper: fetch form_records for a submission id, trying both numeric submission_id
+      * and submission_uuid fallback when available.
+      * Returns an array of records.
       */
+     private static function fetchFormRecordsForSubmission($db, int $submissionId): array
+     {
+          $records = [];
+          try {
+               $uuidRow = $db->table('form_submissions')->select('submission_uuid')->where('id', $submissionId)->get()->getRowArray();
+               $uuid = is_array($uuidRow) && !empty($uuidRow['submission_uuid']) ? trim((string)$uuidRow['submission_uuid']) : '';
+
+               $qb = $db->table('form_records')
+                    ->select('form_records.*, fi.input_name, fi.input_label')
+                    ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left');
+
+               $qb->groupStart();
+               $qb->where('form_records.submission_id', $submissionId);
+               if ($uuid !== '') {
+                    $qb->orWhere('form_records.submission_uuid', $uuid);
+               }
+               $qb->groupEnd();
+
+               $qb->orderBy('form_records.id', 'asc');
+               $records = $qb->get()->getResultArray();
+          } catch (\Throwable $e) {
+               // ignore and return empty
+          }
+          return is_array($records) ? $records : [];
+     }
+     public static function buildPhlebotomyPdf(int $id): string
+     {
+          // Delegate to buildLabDailyPdf to ensure consistent rendering
+          // across automated and manual PDF generation paths.
+          try {
+               log_message('error', "DEBUG buildPhlebotomyPdf: delegating to buildLabDailyPdf for submission {$id}");
+               return self::buildLabDailyPdf($id);
+          } catch (\Throwable $e) {
+               // If delegation fails, bubble the exception so callers can handle it.
+               throw $e;
+          }
+     }
+     //  * @throws \RuntimeException if lab weekly submission not found
+     //  */
      public static function buildLabWeeklyPdf(int $id): string
      {
           $db = \Config\Database::connect();
@@ -167,13 +89,7 @@ class PdfService
           // fetch associated records from form_records, joining metadata for labels and section names
           $records = [];
           try {
-               $records = $db->table('form_records')
-                    ->select('form_records.*, fi.input_name, fi.input_label')
-                    ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left')
-                    ->where('form_records.submission_id', $id)
-                    ->orderBy('form_records.id', 'asc')
-                    ->get()
-                    ->getResultArray();
+               $records = self::fetchFormRecordsForSubmission($db, (int)$id);
 
                if (!empty($records)) {
                     $sectionIds = array_unique(array_filter(array_map(fn($r) => isset($r['section_id']) ? (int)$r['section_id'] : 0, $records)));
@@ -287,13 +203,7 @@ class PdfService
           // Fetch records and attach section names
           $records = [];
           try {
-               $records = $db->table('form_records')
-                    ->select('form_records.*, fi.input_name, fi.input_label')
-                    ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left')
-                    ->where('form_records.submission_id', $id)
-                    ->orderBy('form_records.id', 'asc')
-                    ->get()
-                    ->getResultArray();
+               $records = self::fetchFormRecordsForSubmission($db, (int)$id);
 
                if (!empty($records)) {
                     $sectionIds = array_unique(array_filter(array_map(fn($r) => isset($r['section_id']) ? (int)$r['section_id'] : 0, $records)));
@@ -339,6 +249,13 @@ class PdfService
 
           $lab['records'] = $records;
 
+          // Debugging: log fetched submission and record counts to help diagnose
+          try {
+               log_message('error', 'DEBUG buildLabDailyPdf: submission id=' . (int)$id . ' lab_row=' . json_encode(array_intersect_key($lab, array_flip(['id', 'form_id', 'form_name', 'centre_name', 'created_dtm']))) . ' records_count=' . count($records));
+          } catch (\Throwable $__logEx) {
+               // ignore logging errors
+          }
+
           // Photos (optional)
           try {
                $photos = $db->table('branding_photos')
@@ -354,6 +271,11 @@ class PdfService
 
           $data['lab'] = $lab;
           $html = view('lab_daily_pdf', $data);
+          try {
+               $len = is_string($html) ? strlen($html) : 0;
+               log_message('error', "DEBUG buildLabDailyPdf: generated HTML length={$len} for submission {$id}");
+          } catch (\Throwable $__logEx) {
+          }
           $pdf = new Dompdf();
           $pdf->loadHtml($html);
           $pdf->setPaper('A4', 'portrait');
@@ -412,7 +334,15 @@ class PdfService
           }
 
           try {
-               $row = $db->table('forms')->select('form_name')->where('id', $formId)->get()->getRowArray();
+               $tableToQuery = 'forms';
+               if (method_exists($db, 'tableExists') && ! $db->tableExists('forms')) {
+                    if (method_exists($db, 'tableExists') && $db->tableExists('vdc_forms')) {
+                         $tableToQuery = 'vdc_forms';
+                    } else {
+                         return false;
+                    }
+               }
+               $row = $db->table($tableToQuery)->select('form_name')->where('id', $formId)->get()->getRowArray();
                $dbFormName = trim((string) ($row['form_name'] ?? ''));
                return self::looksLikeItFormName($dbFormName);
           } catch (\Throwable $e) {
@@ -476,13 +406,7 @@ class PdfService
           // human-friendly labels and section names
           $records = [];
           try {
-               $records = $db->table('form_records')
-                    ->select('form_records.*, fi.input_name, fi.input_label')
-                    ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left')
-                    ->where('form_records.submission_id', $id)
-                    ->orderBy('form_records.id', 'asc')
-                    ->get()
-                    ->getResultArray();
+               $records = self::fetchFormRecordsForSubmission($db, (int)$id);
                log_message('error', "PdfService: submission {$id} returned " . count($records) . " record(s)");
                foreach ($records as $rr) {
                     if (!empty($rr['attachments'])) {
@@ -621,13 +545,7 @@ class PdfService
           // fetch records and attach section names exactly as above
           $records = [];
           try {
-               $records = $db->table('form_records')
-                    ->select('form_records.*, fi.input_name, fi.input_label')
-                    ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left')
-                    ->where('form_records.submission_id', $id)
-                    ->orderBy('form_records.id', 'asc')
-                    ->get()
-                    ->getResultArray();
+               $records = self::fetchFormRecordsForSubmission($db, (int)$id);
                log_message('error', "PdfService: maintenance {$id} returned " . count($records) . " record(s)");
                foreach ($records as $rr) {
                     if (!empty($rr['attachments'])) {
@@ -727,13 +645,7 @@ class PdfService
 
           $records = [];
           try {
-               $records = $db->table('form_records')
-                    ->select('form_records.*, fi.input_name, fi.input_label')
-                    ->join('form_inputs fi', 'fi.id = form_records.input_id', 'left')
-                    ->where('form_records.submission_id', $id)
-                    ->orderBy('form_records.id', 'asc')
-                    ->get()
-                    ->getResultArray();
+               $records = self::fetchFormRecordsForSubmission($db, (int)$id);
 
                if (!empty($records)) {
                     $sectionIds = array_unique(array_filter(array_map(fn($r) => isset($r['section_id']) ? (int)$r['section_id'] : 0, $records)));
@@ -777,18 +689,83 @@ class PdfService
                log_message('error', 'PdfService::buildItPdf failed to load records: ' . $e->getMessage());
           }
 
-          $check['records'] = $records;
-
+          $photos = [];
+          $photosByCaption = [];
           try {
                $photos = $db->table('branding_photos')
                     ->where('checklist_id', $id)
                     ->get()
                     ->getResultArray();
-               if (!empty($photos)) {
-                    $check['photos'] = $photos;
+               foreach ($photos as $photo) {
+                    $caption = trim((string) ($photo['caption'] ?? ''));
+                    if ($caption === '') {
+                         continue;
+                    }
+                    if (!isset($photosByCaption[$caption])) {
+                         $photosByCaption[$caption] = [];
+                    }
+                    $photosByCaption[$caption][] = $photo['filename'];
                }
           } catch (\Throwable $__e) {
                // ignore
+          }
+
+          if (!empty($records)) {
+               foreach ($records as &$r) {
+                    $r['attachments'] = '';
+
+                    $inputId = isset($r['input_id']) ? (int) $r['input_id'] : 0;
+                    $sectionId = isset($r['section_id']) ? (int) $r['section_id'] : 0;
+                    $subSectionId = isset($r['sub_section_id']) ? (int) $r['sub_section_id'] : 0;
+                    $fieldSlug = '';
+                    if (!empty($r['input_name'])) {
+                         $fieldSlug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', trim((string) $r['input_name'])));
+                         $fieldSlug = trim($fieldSlug, '_');
+                    }
+
+                    $possibleKeys = [];
+                    if ($sectionId && $subSectionId && $fieldSlug !== '') {
+                         $possibleKeys[] = "s{$sectionId}__ss{$subSectionId}__{$fieldSlug}";
+                    }
+                    if ($fieldSlug !== '') {
+                         $possibleKeys[] = $fieldSlug;
+                    }
+
+                    $inputValue = trim((string) ($r['input_value'] ?? ''));
+                    if ($inputValue !== '') {
+                         $valueFiles = array_filter(array_map('trim', explode(',', $inputValue)));
+                         foreach ($photosByCaption as $caption => $filenames) {
+                              foreach ($filenames as $filename) {
+                                   if (in_array($filename, $valueFiles, true)) {
+                                        $r['attachments'] = $r['attachments']
+                                             ? $r['attachments'] . ',' . $filename
+                                             : $filename;
+                                   }
+                              }
+                         }
+                    }
+
+                    foreach ($possibleKeys as $key) {
+                         if (isset($photosByCaption[$key]) && !empty($photosByCaption[$key])) {
+                              $photoFiles = implode(',', $photosByCaption[$key]);
+                              $r['attachments'] = $r['attachments']
+                                   ? $r['attachments'] . ',' . $photoFiles
+                                   : $photoFiles;
+                         }
+                    }
+
+                    if ($r['attachments']) {
+                         $unique = array_unique(array_filter(explode(',', $r['attachments'])));
+                         $r['attachments'] = implode(',', $unique);
+                    }
+               }
+               unset($r);
+          }
+
+          $check['records'] = $records;
+
+          if (!empty($photos)) {
+               $check['photos'] = $photos;
           }
 
           $data['it'] = $check;

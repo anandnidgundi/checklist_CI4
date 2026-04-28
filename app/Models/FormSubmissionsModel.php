@@ -57,6 +57,7 @@ class FormSubmissionsModel extends Model
                     ->orLike('s.status', $search)
                     ->orLike('s.form_id', $search)
                     ->orLike('s.dept_id', $search)
+                    ->orLike('s.header', $search)
                     ->groupEnd();
           }
 

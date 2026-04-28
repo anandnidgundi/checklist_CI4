@@ -418,6 +418,26 @@ class UserModel extends Model
           }
      }
 
+     public function getITDeptUsersList()
+     {
+          try {
+               return $this->db->table('new_emp_master as a')
+                    ->select('a.*, b.role')
+                    ->join('bmcm as b', 'b.emp_code = a.emp_code', 'left')
+                    ->where('a.active', 'Active')
+                    ->groupStart()
+                    ->where('b.role', 'IT')
+                    ->orWhere('b.role', 'IT_ADMIN')
+                    ->groupEnd()
+                    ->orderBy('a.emp_code', 'asc')
+                    ->get()
+                    ->getResultArray();
+          } catch (\Exception $e) {
+               log_message('error', 'Database query failed in getITDeptUsersList: ' . $e->getMessage());
+               return [];
+          }
+     }
+
      public function addClusterToZone($data, $zone_id, $cluster_id)
      {
 

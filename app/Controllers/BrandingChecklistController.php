@@ -319,9 +319,14 @@ class BrandingChecklistController extends BaseController
                $lon = isset($meta['longitude']) ? (float)$meta['longitude'] : null;
                $accuracy = isset($meta['accuracy']) ? (int)$meta['accuracy'] : null;
                $geo_dtm = null;
-               if (isset($meta['timestamp'])) {
+               if (!empty($meta['timestamp'])) {
                     $ts = strtotime($meta['timestamp']);
-                    if ($ts !== false) $geo_dtm = date('Y-m-d H:i:s', $ts);
+                    if ($ts !== false) {
+                         $geo_dtm = date('Y-m-d H:i:s', $ts);
+                    }
+               }
+               if (is_null($geo_dtm) && (!is_null($lat) || !is_null($lon) || !is_null($accuracy))) {
+                    $geo_dtm = date('Y-m-d H:i:s');
                }
                if (!is_null($lat) && ($lat < -90 || $lat > 90)) $lat = null;
                if (!is_null($lon) && ($lon < -180 || $lon > 180)) $lon = null;
@@ -351,7 +356,7 @@ class BrandingChecklistController extends BaseController
           // Add a public URL so clients don't have to construct paths themselves
           foreach ($photos as &$p) {
                $file = ($p['filename'] ?? '');
-               $p['url'] = base_url('viewAttachmentNew/' . $file . '?size=thumb');
+               $p['url'] = base_url('viewAttachmentNewThumb/' . $file);
                $p['full_url'] = base_url('viewAttachmentNew/' . $file);
           }
 

@@ -198,7 +198,7 @@ class EmailController extends Controller
                                    'payload_is_maintenance_form' => (string)($data['is_maintenance_form'] ?? ''),
                                    'is_maintenance' => $isMaintenance ? '1' : '0',
                               ];
-                              file_put_contents(APPPATH . '../writable/logs/email_send_debug.log', "[" . date('Y-m-d H:i:s') . "] pdf_resolution: " . json_encode($diag) . "\n", FILE_APPEND);
+                              file_put_contents(APPPATH . '../writable/logs/email_send_debug_' . date('Y-m-d') . '.log', "[" . date('Y-m-d H:i:s') . "] pdf_resolution: " . json_encode($diag) . "\n", FILE_APPEND);
                          } catch (\Throwable $__diagEx) {
                          }
 
@@ -358,12 +358,14 @@ class EmailController extends Controller
                $mail->Body    = $body;
                $mail->AltBody = strip_tags($body);
 
-               // DEBUG: log final subject/body preview and recipient before sending (no credentials)
+               // DEBUG: log final subject/body preview, recipient, template and attachments before sending (no credentials)
                try {
                     $log  = "[" . date('Y-m-d H:i:s') . "] sendTemplate: event_key={$eventKey} to={$toEmail} subject=" . str_replace(["\n", "\r"], ' ', $subject) . "\n";
+                    $log .= "template=" . json_encode(['event_key' => $eventKey, 'form_id' => ($template['form_id'] ?? null)]) . "\n";
                     $log .= "data=" . json_encode($data) . "\n";
+                    $log .= "attachments=" . json_encode($attachments) . "\n";
                     $log .= "body_preview=" . substr(strip_tags($body), 0, 2000) . "\n\n";
-                    file_put_contents(APPPATH . '../writable/logs/email_send_debug.log', $log, FILE_APPEND);
+                    file_put_contents(APPPATH . '../writable/logs/email_send_debug_' . date('Y-m-d') . '.log', $log, FILE_APPEND);
                } catch (\Throwable $logEx) {
                     // ignore logging failures
                }
@@ -372,7 +374,7 @@ class EmailController extends Controller
 
                // record success
                try {
-                    file_put_contents(APPPATH . '../writable/logs/email_send_debug.log', "[" . date('Y-m-d H:i:s') . "] sendTemplate: sent to={$toEmail} SUCCESS\n", FILE_APPEND);
+                    file_put_contents(APPPATH . '../writable/logs/email_send_debug_' . date('Y-m-d') . '.log', "[" . date('Y-m-d H:i:s') . "] sendTemplate: sent to={$toEmail} SUCCESS\n", FILE_APPEND);
                } catch (\Throwable $logEx) {
                }
 
@@ -380,7 +382,7 @@ class EmailController extends Controller
           } catch (Exception $e) {
                // record failure
                try {
-                    file_put_contents(APPPATH . '../writable/logs/email_send_debug.log', "[" . date('Y-m-d H:i:s') . "] sendTemplate: to={$toEmail} FAILED: {$mail->ErrorInfo}\n", FILE_APPEND);
+                    file_put_contents(APPPATH . '../writable/logs/email_send_debug_' . date('Y-m-d') . '.log', "[" . date('Y-m-d H:i:s') . "] sendTemplate: to={$toEmail} FAILED: {$mail->ErrorInfo}\n", FILE_APPEND);
                } catch (\Throwable $logEx) {
                }
 
@@ -399,20 +401,27 @@ class EmailController extends Controller
      // GET /debug/email-logs  (admin-only helper)
      public function debugLogs()
      {
+          // Accept optional ?days= parameter (1-30) to control how many dated send logs to return
+          $days = (int) ($this->request->getGet('days') ?? 7);
+          $days = $days < 1 ? 1 : ($days > 30 ? 30 : $days);
+
           $files = [
                'email_trigger_debug' => APPPATH . '../writable/logs/email_trigger_debug.log',
-               'email_send_debug'    => APPPATH . '../writable/logs/email_send_debug.log',
                'email_template_debug' => APPPATH . '../writable/logs/email_template_debug.log',
           ];
+
+          // build list of dated send logs (most recent first)
+          $sendLogs = [];
+          for ($i = 0; $i < $days; $i++) {
+               $d = date('Y-m-d', strtotime("-{$i} days"));
+               $sendLogs[$d] = APPPATH . "../writable/logs/email_send_debug_{$d}.log";
+          }
+
           $out = [];
-          foreach ($files as $k => $p) {
-               if (!file_exists($p)) {
-                    $out[$k] = null;
-                    continue;
-               }
-               // return last ~100 lines
+
+          $readTail = function ($p) {
                $lines = [];
-               $fp = fopen($p, 'r');
+               $fp = @fopen($p, 'r');
                if ($fp) {
                     $pos = -1;
                     $line = '';
@@ -434,10 +443,27 @@ class EmailController extends Controller
                     if ($line !== '') $lines[] = strrev($line);
                     fclose($fp);
                     $lines = array_reverse($lines);
-                    $out[$k] = $lines;
-               } else {
-                    $out[$k] = null;
                }
+               return $lines;
+          };
+
+          // read non-dated files
+          foreach ($files as $k => $p) {
+               if (!file_exists($p)) {
+                    $out[$k] = null;
+                    continue;
+               }
+               $out[$k] = $readTail($p);
+          }
+
+          // read dated send logs into a map of date => lines
+          $out['email_send_debug'] = [];
+          foreach ($sendLogs as $d => $p) {
+               if (!file_exists($p)) {
+                    $out['email_send_debug'][$d] = null;
+                    continue;
+               }
+               $out['email_send_debug'][$d] = $readTail($p);
           }
 
           return $this->response->setJSON($out);
@@ -493,6 +519,32 @@ class EmailController extends Controller
           } catch (\Throwable $e) {
                return $this->response->setJSON(['message' => 'query failed', 'error' => $e->getMessage()])->setStatusCode(500);
           }
+     }
+
+     // send email with template specified in payload
+     public function sendEmail()
+     {
+          $auth = $this->validateAuthorizationNew();
+          if ($auth instanceof \CodeIgniter\HTTP\ResponseInterface) return $auth;
+
+          $json = $this->request->getJSON(true);
+          if (!is_array($json)) {
+               return $this->response->setJSON(['message' => 'invalid JSON body'])->setStatusCode(400);
+          }
+          $eventKey = $json['eventKey'] ?? null;
+          $toEmail = $json['toEmail'] ?? null;
+          $toName = $json['toName'] ?? null;
+          $data = $json['data'] ?? [];
+          $subjectOverride = $json['subjectOverride'] ?? null;
+          $ccList = $json['ccList'] ?? null;
+          $attachments = $json['attachments'] ?? null;
+
+          if (!$eventKey || !$toEmail) {
+               return $this->response->setJSON(['message' => 'eventKey and toEmail are required'])->setStatusCode(400);
+          }
+
+          $result = $this->sendTemplate($eventKey, $toEmail, $toName, $data, $subjectOverride, $ccList, $attachments);
+          return $this->response->setJSON(['message' => $result]);
      }
 
      protected function validateAuthorizationNew()

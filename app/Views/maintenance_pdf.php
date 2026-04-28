@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
      <head>
@@ -6,41 +6,248 @@
           <title>Maintenance Checklist <?= esc($maintenance['id'] ?? '') ?></title>
           <style>
           body {
-               font-family: Arial, Helvetica, sans-serif;
+               font-family: "Helvetica Neue", Arial, sans-serif;
+               color: #1f2937;
+               background: #ffffff;
+               margin: 0;
+               padding: 0;
+               line-height: 1.25;
                font-size: 12px;
+          }
+
+          .pdf-wrapper {
+               max-width: 920px;
+               margin: 0 auto;
+               padding: 2px 4px 4px;
+          }
+
+          .pdf-header {
+               display: flex;
+               align-items: center;
+               justify-content: flex-start;
+               gap: 8px;
+               padding-bottom: 6px;
+               margin-bottom: 6px;
+               border-bottom: 1px solid #0f4c81;
+               text-align: left;
+               width: 100%;
+          }
+
+          .header-left {
+               flex: 0 0 auto;
+               display: flex;
+               align-items: center;
+          }
+
+          .header-left img {
+               max-height: 28px;
+               display: block;
+               margin: 0;
+          }
+
+          .tableNoBorder {
+               width: 100%;
+               border-collapse: collapse;
+               border: none;
+          }
+
+          .logo {
+               max-height: 28px;
+               display: block;
+               margin: 0;
+          }
+
+          .header-right {
+               flex: 1 1 auto;
+               min-width: 0;
+               margin-left: auto;
+               display: flex;
+               flex-direction: column;
+               align-items: flex-end;
+               justify-content: center;
+          }
+
+          .company-name {
+               font-size: 14px;
+               font-weight: 700;
+               color: #0f4c81;
+               text-transform: uppercase;
+               letter-spacing: 0.04em;
+               margin: 0;
+          }
+
+          .title {
+               font-size: 11px;
+               color: #111827;
+               margin: 1px 0 0;
+               letter-spacing: 0.03em;
+          }
+
+          .summary-card {
+               background: none;
+               border: none;
+               border-radius: 0;
+               padding: 0;
+               margin-bottom: 8px;
+               box-shadow: none;
           }
 
           table {
                width: 100%;
                border-collapse: collapse;
-               margin-bottom: 12px;
+               margin-bottom: 6px;
           }
 
           th,
           td {
-               padding: 4px 6px;
-               border: 1px solid #ccc;
+               padding: 2px 5px;
+               border: 1px solid #d2d7df;
                vertical-align: top;
+               font-size: 10px;
           }
 
           .header-table th {
-               background: #f0f0f0;
-               width: 160px;
+               background: #e9f1fb;
+               width: 16%;
+               min-width: 100px;
                text-align: left;
+               color: #0f4c81;
+               padding: 2px 6px;
           }
 
-          h2,
-          h3 {
+          .header-table td {
+               background: #ffffff;
+               width: 34%;
+               padding: 2px 6px;
+          }
+
+          .critical-status {
+               color: #c0392b;
+               font-weight: 600;
+          }
+
+          table[class=""] {
+               border: none;
+          }
+
+          table[class=""] th,
+          table[class=""] td {
+               border: none;
+               padding: 0;
+          }
+
+          .item-table th {
+               background: #bcdbf7;
+               color: #141414;
+               text-align: left;
+               font-size: 12px;
+               padding: 4px;
+          }
+
+          .item-table th:first-child,
+          .item-table td:first-child {
+               width: 260px;
+               white-space: normal;
+               overflow-wrap: break-word;
+               word-wrap: break-word;
+          }
+
+          .item-table td {
+               padding: 5px;
+          }
+
+          .item-table tbody tr:nth-child(odd) {
+               background: #fbfdff;
+
+          }
+
+          .item-table {
+               margin-bottom: 0.35rem;
+          }
+
+          .section-title {
+               margin: 8px 0 4px;
+               font-size: 14px;
+               color: #0f4c81;
+               border-left: 4px solid #0f4c81;
+               padding-left: 8px;
+          }
+
+          .subsection-title {
+               margin: 8px 0 4px 16px;
+               padding-left: 6px;
+               font-size: 12px;
+               color: #1f3d6e;
+               font-weight: 600;
+          }
+
+          .record-entry {
+               margin: 0 0 0.3rem 24px;
+               line-height: 1.15;
+               font-size: 11px;
+          }
+
+          .attachment-grid {
+               display: flex;
+               flex-wrap: wrap;
+               gap: 8px;
+               justify-content: space-between;
                margin: 8px 0;
+          }
+
+          .attachment-card {
+               width: calc(25% - 4px);
+               page-break-inside: avoid;
+               break-inside: avoid;
+               margin-bottom: 8px;
+          }
+
+          .attachment-card img {
+               width: 50%;
+               max-width: 50%;
+               height: auto;
+               display: block;
+               border: 1px solid #d2d7df;
+               border-radius: 4px;
+          }
+
+          .attachment-meta {
+               font-size: 10px;
+               color: #555;
+               margin-top: 4px;
           }
 
           .page-break {
                page-break-before: always;
+               margin-top: 24px;
           }
 
           img {
                max-width: 100%;
                height: auto;
+               display: block;
+               margin: 0 auto;
+          }
+
+          .record-entry {
+               margin: 0 0 0.3rem;
+               line-height: 1.2;
+               font-size: 11px;
+               padding-left: 5rem;
+          }
+
+          .record-entry span {
+               color: #333;
+          }
+
+          .record-entry strong {
+               font-weight: 600;
+          }
+
+          @media print {
+               .pdf-wrapper {
+                    padding: 0;
+               }
           }
 
           </style>
@@ -48,263 +255,337 @@
 
      <body>
           <?php
-     // helper closure to produce a usable image src for Dompdf.  We define
-     // it early so other header elements (logo) can reuse it.  It now searches
-     // several local directories including public/uploads/images so you can
-     // place the logo under the web root if you prefer.
-     // log base paths for debugging once
-     log_message('error', 'Pdf header paths: WRITEPATH=' . WRITEPATH . ' FCPATH=' . FCPATH);
      $makeSrc = function ($fn) {
-          if (! $fn) return '';
+          if (!$fn) return '';
+
           $paths = [
                WRITEPATH . 'uploads/' . $fn,
                WRITEPATH . 'uploads/branding_photos/' . $fn,
-               FCPATH . 'uploads/images/' . $fn,              // common location if FCPATH ends in public/
-               FCPATH . 'public/uploads/images/' . $fn,       // covers setups where FCPATH is project root
+               FCPATH . 'uploads/images/' . $fn,
+               FCPATH . 'public/uploads/images/' . $fn,
           ];
+
           foreach ($paths as $local) {
-               if (is_file($local)) {
-                    // mime_content_type may be missing on some hosts; fall back gracefully
-                    if (function_exists('mime_content_type')) {
-                         $type = mime_content_type($local) ?: 'application/octet-stream';
-                    } else {
-                         // guess from extension or use generic
-                         $ext = strtolower(pathinfo($local, PATHINFO_EXTENSION));
-                         $map = [
-                              'jpg' => 'image/jpeg',
-                              'jpeg' => 'image/jpeg',
-                              'png' => 'image/png',
-                              'gif' => 'image/gif',
-                              'pdf' => 'application/pdf'
-                         ];
-                         $type = $map[$ext] ?? 'application/octet-stream';
-                    }
-                    $data = base64_encode(file_get_contents($local));
-                    return 'data:' . $type . ';base64,' . $data;
+               if (!is_file($local)) {
+                    continue;
                }
+
+               if (function_exists('mime_content_type')) {
+                    $type = mime_content_type($local) ?: 'application/octet-stream';
+               } else {
+                    $ext = strtolower(pathinfo($local, PATHINFO_EXTENSION));
+                    $map = [
+                         'jpg' => 'image/jpeg',
+                         'jpeg' => 'image/jpeg',
+                         'png' => 'image/png',
+                         'gif' => 'image/gif',
+                         'pdf' => 'application/pdf',
+                    ];
+                    $type = $map[$ext] ?? 'application/octet-stream';
+               }
+
+               $data = base64_encode((string) file_get_contents($local));
+               return 'data:' . $type . ';base64,' . $data;
           }
-          // fallback to URL (remote) if allowed (relative to web root)
+
           return base_url('uploads/' . $fn);
      };
 
-     // company header � logo + title.
-     // Try a couple of reasonable filenames so you dont need to rename the
-     // file after uploading.  The helper searches writable/uploads,
-     // writable/uploads/branding_photos and public/uploads/images.
      $logoSrc = '';
      foreach (['company_logo.png', 'logo.png', 'logo.jpg', 'logo.jpeg'] as $logoFile) {
-          // check if the file actually exists in one of the local paths; if not,
-          // skip candidate (don't rely on fallback URL).  Log info for each.
           $paths = [
                WRITEPATH . 'uploads/' . $logoFile,
                WRITEPATH . 'uploads/branding_photos/' . $logoFile,
                FCPATH . 'uploads/images/' . $logoFile,
                FCPATH . 'public/uploads/images/' . $logoFile,
           ];
-          $pathChecks = [];
-          $found = false;
+
+          $exists = false;
           foreach ($paths as $p) {
-               $exists = is_file($p);
-               $pathChecks[] = $p . ($exists ? ':Y' : ':N');
-               if ($exists) {
-                    $found = true;
+               if (is_file($p)) {
+                    $exists = true;
                     break;
                }
           }
-          log_message('error', 'Logo candidate ' . $logoFile . ' checked=' . implode(', ', $pathChecks) . ' found=' . ($found ? 'Y' : 'N'));
-          if (! $found) {
+
+          if (!$exists) {
                continue;
           }
 
-          // file is present so generate a data URI
           $logoSrc = $makeSrc($logoFile);
           if ($logoSrc) {
-               log_message('error', 'Logo selected ' . $logoFile . ' srclen=' . strlen($logoSrc));
                break;
           }
      }
+
+     $humanize = function ($s) {
+          $s = (string) ($s ?? '');
+          $s = str_replace(['_', '-'], ' ', $s);
+          return ucwords(trim($s));
+     };
+     $formatDate = function ($rawDate) {
+          if ($rawDate === null || $rawDate === '') {
+               return '';
+          }
+
+          if ($rawDate instanceof \DateTimeInterface) {
+               return $rawDate->format('d-m-Y');
+          }
+
+          if (is_numeric($rawDate)) {
+               $date = date_create('@' . (int)$rawDate);
+               if ($date !== false) {
+                    return $date->format('d-m-Y');
+               }
+          }
+
+          $date = date_create(trim((string)$rawDate));
+          if ($date !== false) {
+               return $date->format('d-m-Y');
+          }
+
+          return trim((string)$rawDate);
+     };
+
+     $formatDateTime = function ($rawDateTime) {
+          if ($rawDateTime === null || $rawDateTime === '') {
+               return '';
+          }
+          if ($rawDateTime instanceof \DateTimeInterface) {
+               return $rawDateTime->format('d-m-Y H:i:s');
+          }
+          if (is_numeric($rawDateTime)) {
+               $date = date_create('@' . (int)$rawDateTime);
+               if ($date !== false) {
+                    return $date->format('d-m-Y H:i:s');
+               }
+          }
+          $date = date_create(trim((string)$rawDateTime));
+          if ($date !== false) {
+               return $date->format('d-m-Y H:i:s');
+          }
+          return trim((string)$rawDateTime);
+     };
+
+     $createdDtmRaw = $maintenance['created_dtm'] ?? $maintenance['createdDTM'] ?? $maintenance['created_at'] ?? '';
+     $createdDtmDisplay = $createdDtmRaw ? $formatDateTime($createdDtmRaw) : '';
+
+     $formatInputValue = function ($raw) {
+          if ($raw === null) return '';
+
+          if (is_array($raw)) {
+               return implode(', ', array_map('strval', $raw));
+          }
+
+          $text = trim((string)$raw);
+          if ($text === '') return '';
+
+          $first = substr($text, 0, 1);
+          if ($first === '{' || $first === '[') {
+               $parsed = json_decode($text, true);
+               if (json_last_error() === JSON_ERROR_NONE && is_array($parsed)) {
+                    $isAssoc = array_keys($parsed) !== range(0, count($parsed) - 1);
+                    if ($isAssoc) {
+                         $status = trim((string)($parsed['status'] ?? $parsed['value'] ?? $parsed['response'] ?? ''));
+                         $remarks = trim((string)($parsed['remarks'] ?? $parsed['remark'] ?? ''));
+
+                         if ($status !== '' && $remarks !== '') {
+                              return "Status: {$status}\nRemarks: {$remarks}";
+                         }
+                         if ($status !== '') return $status;
+                         if ($remarks !== '') return "Remarks: {$remarks}";
+                    }
+
+                    $vals = [];
+                    foreach ($parsed as $v) {
+                         if (is_scalar($v) || $v === null) {
+                              $sv = trim((string)$v);
+                              if ($sv !== '') $vals[] = $sv;
+                         }
+                    }
+                    if (!empty($vals)) return implode(', ', $vals);
+               }
+          }
+
+          return $text;
+     };
+
+     $isCriticalValue = function ($text) {
+          $needle = strtolower(trim((string)$text));
+          return in_array($needle, ['repairs needed', 'not working', 'not done', 'pending'], true);
+     };
      ?>
 
-          <div style="text-align:center; margin-bottom:12px; background:#f0f0f0; padding:8px;">
-               <?php if ($logoSrc): ?>
-               <img src="<?= esc($logoSrc) ?>" alt="logo" style="max-height:60px;" />
-               <div style="font-size:16px; font-weight:bold; margin-top:4px;">Vijaya Diagnostic Centre Limited</div>
-               <?php else: ?>
-               <div style="font-size:16px; font-weight:bold;">Vijaya Diagnostic Centre Limited</div>
-               <?php endif; ?>
-          </div>
+          <div class="pdf-wrapper">
+               <div class="pdf-header">
+                    <table>
+                         <tr>
+                              <td style="border:none; padding:0;">
 
-          <h2>Maintenance Checklist</h2>
+                                   <?php if ($logoSrc): ?>
+                                   <img src="<?= esc($logoSrc) ?>" class="logo" alt="logo" />
+                                   <?php endif; ?>
 
-          <table class="header-table">
-               <?php foreach (
-               [
-                    'Centre Name'      => $maintenance['centre_name'] ?? '',
-                    'Location'         => $maintenance['location'] ?? '',
-                    'Date of Visit'    => $maintenance['date_of_visit'] ?? '',
-                    'Visit Time'       => $maintenance['visit_time'] ?? '',
-                    'Audited By'       => $maintenance['audited_by'] ?? '',
-                    'Branch Manager'   => $maintenance['branch_manager'] ?? '',
-                    'Cluster Manager'  => $maintenance['cluster_manager'] ?? '',
-                    'Contact'          => $maintenance['contact'] ?? '',
-                    'Notes'            => $maintenance['notes'] ?? '',
-               ] as $label => $value
-          ): ?>
-               <?php if ($value !== null && $value !== ''): ?>
-               <tr>
-                    <th><?= esc($label) ?></th>
-                    <td><?= esc($value) ?></td>
-               </tr>
-               <?php endif; ?>
-               <?php endforeach; ?>
-          </table>
+                              </td>
+                              <td style="border:none; padding:0;  ">
 
-          <?php if (!empty($maintenance['records'])): ?>
-          <h3>Checklist Items</h3>
-          <?php
-          // humanize underscored names into readable text
-          $humanize = function ($s) {
-               $s = (string) ($s ?? '');
-               $s = str_replace(['_', '-'], ' ', $s);
-               return ucwords(trim($s));
-          };
+                                   <div class="company-name">Vijaya Diagnostic Centre Limited</div>
+                                   <div class="title">Maintenance Checklist</div>
 
-          $formatInputValue = function ($raw) {
-               if ($raw === null) return '';
+                              </td>
+                         </tr>
+                    </table>
 
-               if (is_array($raw)) {
-                    return implode(', ', array_map('strval', $raw));
+
+               </div>
+
+               <div class="summary-card">
+                    <?php
+               $auditedBy = trim((string) ($maintenance['audited_by'] ?? ''));
+               $auditedByMobile = trim((string) ($maintenance['audited_by_mobile'] ?? $maintenance['audited_by_phone'] ?? $maintenance['audited_by_contact'] ?? ''));
+               $visitedBy = $auditedBy;
+               if ($auditedByMobile !== '') {
+                    $visitedBy = $visitedBy !== '' ? "{$visitedBy} ({$auditedByMobile})" : $auditedByMobile;
                }
+               $summaryData = [
+                    'Centre Name' => $maintenance['centre_name'] ?? '',
+                    'Location' => $maintenance['location'] ?? '',
+                    'Date of Visit' => $formatDate($maintenance['date_of_visit'] ?? ''),
+                    'Visit Time' => $maintenance['visit_time'] ?? '',
+                    'Visited By' => $visitedBy,
+                    'Branch Manager' => $maintenance['branch_manager'] ?? '',
+                    'Cluster Manager' => $maintenance['cluster_manager'] ?? '',
+                    'Contact' => $maintenance['mobile_no'] ?? $maintenance['contact'] ?? '',
+                    'Notes' => $maintenance['notes'] ?? '',
+               ];
+               $summaryItems = [];
+               foreach ($summaryData as $label => $value) {
+                    if ($value !== null && $value !== '') {
+                         $summaryItems[] = ['label' => $label, 'value' => $value];
+                    }
+               }
+               ?>
+                    <table class="header-table">
+                         <?php for ($i = 0; $i < count($summaryItems); $i += 2): ?>
+                         <tr>
+                              <th><?= esc($summaryItems[$i]['label']) ?></th>
+                              <td><?= esc($summaryItems[$i]['value']) ?></td>
+                              <?php if (isset($summaryItems[$i + 1])): ?>
+                              <th><?= esc($summaryItems[$i + 1]['label']) ?></th>
+                              <td><?= esc($summaryItems[$i + 1]['value']) ?></td>
+                              <?php else: ?>
+                              <th></th>
+                              <td></td>
+                              <?php endif; ?>
+                         </tr>
+                         <?php endfor; ?>
+                    </table>
+               </div>
 
-               $text = trim((string)$raw);
-               if ($text === '') return '';
+               <?php if (!empty($maintenance['records'])): ?>
+               <!-- <h3 class="section-title">Checklist Items</h3> -->
+               <?php
+               $grouped = [];
+               foreach ($maintenance['records'] as $r) {
+                    $sec = $r['section_name'] ?? $r['section'] ?? 'Unspecified';
+                    $sub = $r['sub_section_name'] ?? $r['sub_section'] ?? '';
+                    $grouped[$sec][$sub][] = $r;
+               }
+               ?>
 
-               $first = substr($text, 0, 1);
-               if ($first === '{' || $first === '[') {
-                    $parsed = json_decode($text, true);
-                    if (json_last_error() === JSON_ERROR_NONE) {
-                         if (is_array($parsed)) {
-                              $isAssoc = array_keys($parsed) !== range(0, count($parsed) - 1);
-
-                              if ($isAssoc) {
-                                   $status = trim((string)($parsed['status'] ?? $parsed['value'] ?? $parsed['response'] ?? ''));
-                                   $remarks = trim((string)($parsed['remarks'] ?? $parsed['remark'] ?? ''));
-
-                                   if ($status !== '' && $remarks !== '') {
-                                        return "Status: {$status}\nRemarks: {$remarks}";
+               <?php foreach ($grouped as $sec => $subs): ?>
+               <h5 class="section-title"><?= esc($sec) ?></h5>
+               <?php foreach ($subs as $sub => $rows): ?>
+               <?php if ($sub !== ''): ?>
+               <b class="subsection-title"><?= esc($sub) ?></b>
+               <?php endif; ?>
+               <table>
+                    <?php foreach ($rows as $r): ?>
+                    <?php
+                                   $rawLabel = $r['input_label'] ?? $r['input_name'] ?? $r['item_label'] ?? '';
+                                   $displayLabel = $rawLabel !== '' ? $rawLabel : '';
+                                   if ($displayLabel === '' && !empty($r['input_name'])) {
+                                        $displayLabel = $humanize($r['input_name']);
                                    }
-                                   if ($status !== '') return $status;
-                                   if ($remarks !== '') return "Remarks: {$remarks}";
+                                   $displayValue = $formatInputValue($r['input_value'] ?? $r['response'] ?? '');
+                                   ?>
+                    <tr>
+                         <td style="width:60%;"><?= esc($displayLabel) ?>:</td>
+                         <td><strong><?= nl2br(esc($displayValue)) ?></strong></td>
+                    </tr>
+                    <?php endforeach; ?>
+               </table>
 
-                                   $vals = [];
-                                   foreach ($parsed as $v) {
-                                        if (is_scalar($v) || $v === null) {
-                                             $sv = trim((string)$v);
-                                             if ($sv !== '') $vals[] = $sv;
-                                        }
-                                   }
-                                   if (!empty($vals)) return implode(', ', $vals);
-                              } else {
-                                   $vals = [];
-                                   foreach ($parsed as $v) {
-                                        if (is_scalar($v) || $v === null) {
-                                             $sv = trim((string)$v);
-                                             if ($sv !== '') $vals[] = $sv;
-                                        }
-                                   }
-                                   if (!empty($vals)) return implode(', ', $vals);
-                              }
-                         }
+               <?php endforeach; ?>
+               <?php endforeach; ?>
+               <?php endif; ?>
+
+               <?php
+          $renderedPhotoFiles = [];
+          foreach (($maintenance['records'] ?? []) as $r) {
+               $files = [];
+               if (!empty($r['attachments'])) {
+                    if (is_array($r['attachments'])) {
+                         $files = $r['attachments'];
+                    } else {
+                         $files = preg_split('/\s*,\s*/', (string) $r['attachments'], -1, PREG_SPLIT_NO_EMPTY);
                     }
                }
 
-               return $text;
-          };
-
-          // build nested grouping: section -> subsection -> rows
-          $grouped = [];
-          foreach ($maintenance['records'] as $r) {
-               $sec = $r['section_name'] ?? $r['section'] ?? 'Unspecified';
-               $sub = $r['sub_section_name'] ?? $r['sub_section'] ?? '';
-               $grouped[$sec][$sub][] = $r;
-          }
+               $attachmentCount = 0;
+               foreach ($files as $fn) {
+                    $filename = basename((string)$fn);
+                    if ($filename === '' || in_array($filename, $renderedPhotoFiles, true)) {
+                         continue;
+                    }
+                    $renderedPhotoFiles[] = $filename;
+                    $src = $makeSrc($fn);
+                    if (!$src) {
+                         continue;
+                    }
+                    if ($attachmentCount === 0):
           ?>
+               <div class="attachment-grid">
+                    <?php endif; ?>
+                    <div class="attachment-card">
+                         <img src="<?= esc($src) ?>" alt="attachment" />
+                         <?php if ($createdDtmDisplay): ?>
+                         <div class="attachment-meta">Photo uploaded on <?= esc($createdDtmDisplay) ?></div>
+                         <?php endif; ?>
+                    </div>
+                    <?php
+                    $attachmentCount++;
+               }
+               if ($attachmentCount > 0):
+                    ?>
+               </div>
+               <?php
+               endif;
+          }
+               ?>
 
-          <?php foreach ($grouped as $sec => $subs): ?>
-          <h4 style="margin-top:16px;"><strong><?= esc($sec) ?></strong></h4>
-          <?php foreach ($subs as $sub => $rows): ?>
-          <?php if ($sub !== ''): ?>
-          <h5 style="margin-top:8px; margin-left:12px; font-weight:normal;"><?= esc($sub) ?></h5>
-          <?php endif; ?>
-          <table>
-               <thead>
-                    <tr>
-                         <th>Item</th>
-                         <th>Value</th>
-                    </tr>
-               </thead>
-               <tbody>
-                    <?php foreach ($rows as $r): ?>
-                    <tr>
-                         <?php
-                                        $rawLabel = $r['input_label'] ?? $r['input_name'] ?? $r['item_label'] ?? '';
-                                        $displayLabel = $rawLabel !== '' ? $rawLabel : '';
-                                        if ($displayLabel === '' && !empty($r['input_name'])) {
-                                             $displayLabel = $humanize($r['input_name']);
-                                        }
-                                        $displayValue = $formatInputValue($r['input_value'] ?? $r['response'] ?? '');
-                                        ?>
-                         <td><?= esc($displayLabel) ?></td>
-                         <td><?= nl2br(esc($displayValue)) ?></td>
-                    </tr>
+               <?php if (!empty($maintenance['photos'])): ?>
+               <div class="attachment-grid">
+                    <?php foreach ($maintenance['photos'] as $p):
+                              $fn = $p['url'] ?? $p['filename'] ?? $p['photo'] ?? $p['file'] ?? '';
+                              $filename = basename((string)$fn);
+                              if ($filename === '' || in_array($filename, $renderedPhotoFiles, true)) {
+                                   continue;
+                              }
+                              $renderedPhotoFiles[] = $filename;
+                              $src = $makeSrc($fn);
+                              if (!$src) continue;
+                         ?>
+                    <div class="attachment-card">
+                         <img src="<?= esc($src) ?>" alt="photo" />
+                         <?php if ($createdDtmDisplay): ?>
+                         <div class="attachment-meta">Photo uploaded on <?= esc($createdDtmDisplay) ?></div>
+                         <?php endif; ?>
+                    </div>
                     <?php endforeach; ?>
-               </tbody>
-          </table>
-          <?php endforeach; ?>
-          <?php endforeach; ?>
-          <?php endif; ?>
-
-
-          <?php
-     // attachments that came back in the dynamicform payload
-     foreach ($maintenance['records'] as $r) :
-          $files = [];
-          if (! empty($r['attachments'])) {
-               if (is_array($r['attachments'])) {
-                    $files = $r['attachments'];
-               } else {
-                    $files = preg_split('/\s*,\s*/', (string) $r['attachments'], -1, PREG_SPLIT_NO_EMPTY);
-               }
-          }
-          foreach ($files as $fn) :
-               $src = $makeSrc($fn);
-               if (! $src) {
-                    log_message('error', 'Pdf view could not resolve attachment ' . $fn);
-                    continue;
-               }
-     ?>
-          <div class="page-break"></div>
-          <div style="margin:16px 0;">
-               <img src="<?= esc($src) ?>" alt="attachment" />
+               </div>
+               <?php endif; ?>
           </div>
-          <?php
-          endforeach;
-     endforeach;
-     ?>
-
-          <?php if (!empty($maintenance['photos'])): ?>
-          <div class="page-break"></div>
-          <h3>Photos</h3>
-          <?php foreach ($maintenance['photos'] as $p):
-               $fn = $p['url'] ?? $p['filename'] ?? $p['photo'] ?? $p['file'] ?? '';
-               $src = $makeSrc($fn);
-               if (!$src) continue;
-          ?>
-          <div style="margin-bottom:16px;">
-               <img src="<?= esc($src) ?>" alt="photo" />
-          </div>
-          <?php endforeach; ?>
-          <?php endif; ?>
      </body>
 
 </html>

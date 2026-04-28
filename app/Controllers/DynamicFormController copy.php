@@ -2246,7 +2246,7 @@ class DynamicFormController extends BaseController
 
           foreach ($photos as &$p) {
                $file = ($p['filename'] ?? '');
-               $p['url'] = base_url('viewAttachmentNew/' . $file . '?size=thumb');
+               $p['url'] = base_url('viewAttachmentNewThumb/' . $file);
                $p['full_url'] = base_url('viewAttachmentNew/' . $file);
           }
 

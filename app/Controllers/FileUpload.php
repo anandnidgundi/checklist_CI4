@@ -442,71 +442,6 @@ class FileUpload extends BaseController
                ]);
           }
 
-          $size = $this->request->getGet('size') ?? 'full';
-
-          // If thumbnail requested, create/cache a 50x50 thumbnail and serve it
-          if ($size === 'thumb') {
-               $thumbDir = $uploadPath . 'thumbs/';
-               if (!is_dir($thumbDir)) {
-                    mkdir($thumbDir, 0755, true);
-               }
-               $thumbName = 'thumb_50_50_' . $fileName;
-               $thumbPath = $thumbDir . $thumbName;
-
-               if (!file_exists($thumbPath)) {
-                    $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-                    if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
-                         // create thumbnail preserving aspect ratio and centering
-                         list($w, $h) = getimagesize($filePath);
-                         $thumbW = 50;
-                         $thumbH = 50;
-                         if ($ext === 'png') {
-                              $src = imagecreatefrompng($filePath);
-                         } else {
-                              $src = imagecreatefromjpeg($filePath);
-                         }
-                         $thumb = imagecreatetruecolor($thumbW, $thumbH);
-                         $bg = imagecolorallocate($thumb, 255, 255, 255);
-                         imagefill($thumb, 0, 0, $bg);
-                         $scale = min($thumbW / $w, $thumbH / $h);
-                         $newW = (int)($w * $scale);
-                         $newH = (int)($h * $scale);
-                         $dstX = (int)(($thumbW - $newW) / 2);
-                         $dstY = (int)(($thumbH - $newH) / 2);
-                         imagecopyresampled($thumb, $src, $dstX, $dstY, 0, 0, $newW, $newH, $w, $h);
-                         imagejpeg($thumb, $thumbPath, 85);
-                         imagedestroy($thumb);
-                         imagedestroy($src);
-                    } elseif ($ext === 'pdf') {
-                         // simple PDF placeholder thumbnail
-                         $thumb = imagecreatetruecolor(50, 50);
-                         $bg = imagecolorallocate($thumb, 240, 240, 240);
-                         $textcol = imagecolorallocate($thumb, 60, 60, 60);
-                         imagefilledrectangle($thumb, 0, 0, 49, 49, $bg);
-                         imagestring($thumb, 5, 9, 15, 'PDF', $textcol);
-                         imagepng($thumb, $thumbPath);
-                         imagedestroy($thumb);
-                    } else {
-                         // generic placeholder
-                         $thumb = imagecreatetruecolor(50, 50);
-                         $bg = imagecolorallocate($thumb, 230, 230, 230);
-                         imagefilledrectangle($thumb, 0, 0, 49, 49, $bg);
-                         imagepng($thumb, $thumbPath);
-                         imagedestroy($thumb);
-                    }
-               }
-
-               // Serve thumbnail
-               header('Cache-Control: public, max-age=86400');
-               $thumbExt = strtolower(pathinfo($thumbPath, PATHINFO_EXTENSION));
-               if ($thumbExt === 'png') header('Content-Type: image/png');
-               else header('Content-Type: image/jpeg');
-               header('Content-Length: ' . filesize($thumbPath));
-               readfile($thumbPath);
-               exit();
-          }
-
-          // Serve full file similar to viewAttachment above
           $fileSize = filesize($filePath);
           $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
           ob_clean();
@@ -536,6 +471,85 @@ class FileUpload extends BaseController
           exit();
      }
 
+     public function viewAttachmentNewThumb($fileName)
+     {
+          // Validate user authorization
+          $userDetails = $this->validateAuthorization();
+          if (!$userDetails) {
+               return $this->response->setJSON([
+                    'status' => 'error',
+                    'message' => 'Unauthorized access'
+               ]);
+          }
+
+          $fileName = basename(htmlspecialchars($fileName));
+          $uploadPath = WRITEPATH . 'uploads/branding_photos/';
+          $filePath = $uploadPath . $fileName;
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => 'error',
+                    'message' => 'File not found or not accessible'
+               ]);
+          }
+
+          $thumbDir = $uploadPath . 'thumbs/';
+          if (!is_dir($thumbDir)) {
+               mkdir($thumbDir, 0755, true);
+          }
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+
+          if (!file_exists($thumbPath)) {
+               $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+               if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
+                    list($w, $h) = getimagesize($filePath);
+                    $thumbW = 50;
+                    $thumbH = 50;
+                    if ($ext === 'png') {
+                         $src = imagecreatefrompng($filePath);
+                    } else {
+                         $src = imagecreatefromjpeg($filePath);
+                    }
+                    $thumb = imagecreatetruecolor($thumbW, $thumbH);
+                    $bg = imagecolorallocate($thumb, 255, 255, 255);
+                    imagefill($thumb, 0, 0, $bg);
+                    $scale = min($thumbW / $w, $thumbH / $h);
+                    $newW = (int)($w * $scale);
+                    $newH = (int)($h * $scale);
+                    $dstX = (int)(($thumbW - $newW) / 2);
+                    $dstY = (int)(($thumbH - $newH) / 2);
+                    imagecopyresampled($thumb, $src, $dstX, $dstY, 0, 0, $newW, $newH, $w, $h);
+                    if ($ext === 'png') {
+                         imagepng($thumb, $thumbPath);
+                    } else {
+                         imagejpeg($thumb, $thumbPath, 85);
+                    }
+                    imagedestroy($thumb);
+                    imagedestroy($src);
+               } elseif ($ext === 'pdf') {
+                    $thumb = imagecreatetruecolor(50, 50);
+                    $bg = imagecolorallocate($thumb, 240, 240, 240);
+                    $textcol = imagecolorallocate($thumb, 60, 60, 60);
+                    imagefilledrectangle($thumb, 0, 0, 49, 49, $bg);
+                    imagestring($thumb, 5, 9, 15, 'PDF', $textcol);
+                    imagepng($thumb, $thumbPath);
+                    imagedestroy($thumb);
+               } else {
+                    $thumb = imagecreatetruecolor(50, 50);
+                    $bg = imagecolorallocate($thumb, 230, 230, 230);
+                    imagefilledrectangle($thumb, 0, 0, 49, 49, $bg);
+                    imagepng($thumb, $thumbPath);
+                    imagedestroy($thumb);
+               }
+          }
+
+          header('Cache-Control: public, max-age=86400');
+          header('Content-Type: image/png');
+          header('Content-Length: ' . filesize($thumbPath));
+          readfile($thumbPath);
+          exit();
+     }
 
      public function getFiles()
      {

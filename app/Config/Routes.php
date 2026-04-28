@@ -8,9 +8,11 @@ use CodeIgniter\Router\RouteCollection;
 $routes->GET('/', 'Home::index');
 $routes->GET('viewAttachment/(:any)', 'FileUpload::viewAttachment/$1');
 $routes->GET('viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
+$routes->GET('viewAttachmentNewThumb/(:any)', 'FileUpload::viewAttachmentNewThumb/$1');
 // Backwards-compatible routes for deployments where the CI app is under a 'backend' folder
 $routes->GET('backend/viewAttachment/(:any)', 'FileUpload::viewAttachment/$1');
 $routes->GET('backend/viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
+$routes->GET('backend/viewAttachmentNewThumb/(:any)', 'FileUpload::viewAttachmentNewThumb/$1');
 // legacy entry point alias – some clients request backend/index.php directly
 $routes->GET('backend/index.php', 'Home::index');
 $routes->GET('pdf/download/(:any)', 'PdfController::checklistDownload/$1');
@@ -131,6 +133,7 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "changeEmpPass", "User::changeEmpPass", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "changeMyPass", "User::changeMyPass", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getUsersList", "User::getUsersList", ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], "get_IT_Dept_Users_list", "User::get_IT_Dept_Users_list", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "addUser", "User::addUser", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "editUser", "User::editUser", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "deleteUser", "User::deleteUser", ['filter' => 'authFilter']);
@@ -429,12 +432,14 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
 
      // Dynamic Form Records
      $routes->match(['POST', 'options'], 'dynamic-form/save', 'DynamicFormController::save', ['filter' => 'authFilter']);
+
      // Unified upload/list endpoints for dynamic-form-managed attachments (used by modern clients)
      $routes->match(['POST', 'options'], 'dynamic-form/(:num)/photos', 'DynamicFormController::uploadPhoto/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], 'dynamic-form/(:num)/photos', 'DynamicFormController::photos/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], 'dynamic-form/list', 'DynamicFormController::list', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'dynamic-form/create', 'DynamicFormController::create', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'dynamic-form/update/(:segment)', 'DynamicFormController::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'dynamic-form/it-dashboard-count', 'DynamicFormController::itDashboardCounts', ['filter' => 'authFilter']);
 
      // Admin: re-run email trigger for an existing submission (best-effort)
      $routes->match(['POST', 'options'], 'dynamic-form/(:num)/resend-email', 'DynamicFormController::resendEmail/$1', ['filter' => 'authFilter']);
@@ -475,4 +480,15 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      // Lab weekly and daily checklist PDF downloads
      $routes->GET('pdf/lab_weekly_download/(:num)', 'PdfController::labWeeklyDownload/$1', ['filter' => 'authFilter']);
      $routes->GET('pdf/lab_daily_download/(:num)', 'PdfController::labDailyDownload/$1', ['filter' => 'authFilter']);
+
+     // New dynamic-form endpoint (new implementation)
+     $routes->match(['POST', 'options'], 'newdform/create', 'NewDFormController::createNewSubmission', ['filter' => 'authFilter']);
+
+     // Aliases to keep frontend using newdform/* while reusing existing DynamicFormController for list/show/update
+     $routes->match(['GET', 'options'], 'newdform/list', 'NewDFormController::list', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'newdform/show/(:segment)', 'NewDFormController::showSubmission/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'newdform/create', 'NewDFormController::createNewSubmission', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'newdform/list',   'NewDFormController::list',                ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'newdform/show/(:segment)', 'NewDFormController::showSubmission/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'newdform/update/(:segment)', 'NewDFormController::update/$1',       ['filter' => 'authFilter']);
 });

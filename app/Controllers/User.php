@@ -223,6 +223,19 @@ class User extends BaseController
           }
      }
 
+     public function get_IT_Dept_Users_list()
+     {
+          $userDetails = $this->validateAuthorization();
+          $userModel = new UserModel();
+          $users = $userModel->getITDeptUsersList();
+
+          return $this->respond([
+               'STATUS' => true,
+               'message' => 'IT department users list.',
+               'data' => $users,
+          ], 200);
+     }
+
      public function getUserwiseBranchClusterZoneList()
      {
           $userDetails = $this->validateAuthorization();

@@ -115,6 +115,9 @@ class BM_Tasks extends BaseController
                     log_message('error', 'BM task log failed: ' . $e->getMessage());
                }
 
+               // If mt1001 is No, trigger BM checklist alert email.
+               $this->sendBmChecklistAlertIfNeeded($jsonData, $branch, $taskDate);
+
                return $this->respond(['status' => true, 'message' => 'Morning Task added successfully.', 'data' => $insertId], 201);
           }
           // If branch is not valid, return an error
@@ -210,6 +213,9 @@ class BM_Tasks extends BaseController
                } catch (\Exception $e) {
                     log_message('error', 'BM task edit log failed: ' . $e->getMessage());
                }
+
+               // If mt1001 is No, trigger BM checklist alert email on edit as well.
+               $this->sendBmChecklistAlertIfNeeded($jsonData, $branch, $taskDate);
 
                // Update subquestions if present
                if (isset($jsonData->subquestions)) {
@@ -677,6 +683,178 @@ class BM_Tasks extends BaseController
                return $this->respond(['status' => false, 'message' => 'BM Task Details not found'], 404);
           }
      }
+
+     /**
+      * Send BM checklist alert when mt1001 is explicitly marked No.
+      *
+      * Template used: BM_Tasks_Checklists
+      * To: BRANDING_MANAGER_TO_EMAIL
+      * CC: Branch manager/branch email + template CC list (handled by EmailController::sendTemplate)
+      */
+     private function sendBmChecklistAlertIfNeeded($jsonData, int $branchId, string $taskDate): void
+     {
+          if (!$this->isNoValue($jsonData->mt1001 ?? null)) {
+               return;
+          }
+
+          if ($branchId <= 0) {
+               return;
+          }
+
+          try {
+               $recipient = $this->resolveClusterManagerRecipientByBranch($branchId);
+               if (empty($recipient['email'])) {
+                    log_message('warning', 'BM mt1001 email skipped: branding manager email not found for branch ' . $branchId);
+                    return;
+               }
+
+               $branchDetails = $recipient['branch_details'] ?? [];
+               $branchManagerEmail = trim((string)($branchDetails['branch_manager_email'] ?? ''));
+               $branchManagerName = trim((string)($branchDetails['branch_manager_name'] ?? ''));
+
+               if ($branchManagerName === '' && $branchManagerEmail !== '') {
+                    $branchManagerName = preg_replace('/@.*$/', '', $branchManagerEmail);
+               }
+
+               if ($branchManagerName === '') {
+                    $branchManagerName = 'Branch Manager';
+               }
+
+               $templateData = [
+                    'branch_name' => $branchDetails['branch_name'] ?? ('Branch ' . $branchId),
+                    'branch_manager_name' => $branchManagerName,
+                    'branch_manager' => $branchManagerName,
+                    'branch_manager_email' => $branchManagerEmail,
+                    'branch_email' => $branchDetails['branch_email'] ?? '',
+                    'date' => $taskDate,
+                    'task_date' => $taskDate,
+                    'name' => $branchManagerName,
+               ];
+
+               $emailController = new EmailController();
+               $result = $emailController->sendTemplate(
+                    'BM_Tasks_Checklists',
+                    (string)$recipient['email'],
+                    (string)($recipient['name'] ?? 'Branding Manager'),
+                    $templateData,
+                    null,
+                    null,
+                    null
+               );
+
+               log_message(
+                    'info',
+                    'BM mt1001 email trigger: branch=' . $branchId
+                         . ' to=' . (string)$recipient['email']
+                         . ' result=' . (string)$result
+               );
+          } catch (\Throwable $e) {
+               log_message('error', 'BM mt1001 email trigger failed: ' . $e->getMessage());
+          }
+     }
+
+     /**
+      * Resolve branding manager recipient email/name and branch manager details for the branch.
+      */
+     private function resolveClusterManagerRecipientByBranch(int $branchId): array
+     {
+          $email = trim((string)(getenv('BRANDING_MANAGER_TO_EMAIL') ?: ''));
+          if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+               return [];
+          }
+
+          $db = \Config\Database::connect();
+          $db2 = \Config\Database::connect('secondary');
+          $branchDetails = [];
+
+          try {
+               $branchesDb = null;
+               if ($db->tableExists('Branches')) {
+                    $branchesDb = $db;
+               } elseif ($db2->tableExists('Branches')) {
+                    $branchesDb = $db2;
+               }
+
+               $branchInfoDb = null;
+               if ($db->tableExists('branch_info')) {
+                    $branchInfoDb = $db;
+               } elseif ($db2->tableExists('branch_info')) {
+                    $branchInfoDb = $db2;
+               }
+
+               if ($branchesDb) {
+                    $branchRow = $branchesDb->query(
+                         'SELECT SysField, SysNo FROM Branches WHERE id = ? LIMIT 1',
+                         [$branchId]
+                    )->getRowArray();
+
+                    if (!empty($branchRow)) {
+                         $resolvedBranchNo = trim((string)($branchRow['SysNo'] ?? ''));
+                         $resolvedBranchName = trim((string)($branchRow['SysField'] ?? ''));
+                         $branchInfoRow = [];
+
+                         if ($branchInfoDb && $resolvedBranchNo !== '') {
+                              $branchInfoRow = $branchInfoDb->query(
+                                   'SELECT branch_manager_name, branch_manager_email, branch_email FROM branch_info WHERE branch_id = ? OR (branch_id + 0) = (? + 0) LIMIT 1',
+                                   [$resolvedBranchNo, $resolvedBranchNo]
+                              )->getRowArray();
+                         }
+
+                         $branchDetails = [
+                              'branch_id' => (string)$branchId,
+                              'branch_sysno' => $resolvedBranchNo,
+                              'branch_name' => $resolvedBranchName !== '' ? $resolvedBranchName : (string)$branchId,
+                              'branch_manager_name' => trim((string)($branchInfoRow['branch_manager_name'] ?? '')),
+                              'branch_manager_email' => trim((string)($branchInfoRow['branch_manager_email'] ?? '')),
+                              'branch_email' => trim((string)($branchInfoRow['branch_email'] ?? '')),
+                         ];
+                    }
+               }
+          } catch (\Throwable $e) {
+               log_message('error', 'branch_info lookup failed for branch ' . $branchId . ': ' . $e->getMessage());
+          }
+
+          if (empty($branchDetails)) {
+               $branchDetails = [
+                    'branch_id' => (string)$branchId,
+                    'branch_name' => (string)$branchId,
+                    'branch_manager_name' => '',
+                    'branch_manager_email' => '',
+                    'branch_email' => '',
+               ];
+          }
+
+          return [
+               'email' => $email,
+               'name' => 'Branding Manager',
+               'branch_details' => $branchDetails,
+          ];
+     }
+
+     private function isYesValue($value): bool
+     {
+          if (is_bool($value)) {
+               return $value === true;
+          }
+
+          $normalized = strtolower(trim((string)$value));
+          return in_array($normalized, ['yes', 'y', '1', 'true'], true);
+     }
+
+     private function isNoValue($value): bool
+     {
+          if ($value === null) {
+               return false;
+          }
+
+          if (is_bool($value)) {
+               return $value === false;
+          }
+
+          $normalized = strtolower(trim((string)$value));
+          return $normalized === 'no';
+     }
+
      private function validateAuthorization()
      {
           if (!class_exists('App\Services\JwtService')) {
