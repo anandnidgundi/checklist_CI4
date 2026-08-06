@@ -20,6 +20,7 @@ class Database extends Config
      // Default and Secondary DB group properties
      public array $default = [];
      public array $secondary = [];
+     public array $vdcinfo = [];
      public function __construct()
      {
           parent::__construct();
@@ -63,6 +64,9 @@ class Database extends Config
                     'DBDriver' => $e('database.secondary.DBDriver', 'MySQLi'),
                     'DBPrefix' => '',
                     'pConnect' => true,
+                    // Persistent connections can cause host/auth differences on some setups.
+                    // Disable for secondary to ensure consistent TCP auth behavior.
+                    'pConnect' => false,
                     'DBDebug'  => true,
                     'charset'  => 'utf8',
                     'DBCollat' => 'utf8_general_ci',
@@ -72,6 +76,26 @@ class Database extends Config
                     'strictOn' => false,
                     'failover' => [],
                     'port'     => (int) $e('database.secondary.port', 3306),
+               ];
+
+               $this->vdcinfo = [
+                    'DSN'      => '',
+                    'hostname' => $e('database.vdcinfo.hostname', '127.0.0.1'),
+                    'username' => $e('database.vdcinfo.username', 'root'),
+                    'password' => $e('database.vdcinfo.password', ''),
+                    'database' => $e('database.vdcinfo.database', ''),
+                    'DBDriver' => $e('database.vdcinfo.DBDriver', 'MySQLi'),
+                    'DBPrefix' => '',
+                    'pConnect' => false,
+                    'DBDebug'  => true,
+                    'charset'  => 'utf8',
+                    'DBCollat' => 'utf8_general_ci',
+                    'swapPre'  => '',
+                    'encrypt'  => false,
+                    'compress' => false,
+                    'strictOn' => false,
+                    'failover' => [],
+                    'port'     => (int) $e('database.vdcinfo.port', 3306),
                ];
           }
           // You can add more logic for production or other environments here

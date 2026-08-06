@@ -6,6 +6,245 @@ use CodeIgniter\Controller;
 
 class PdfController extends Controller
 {
+     // pest control pdf
+
+     public function pestControlPdfDownload(int $id)
+     {
+          try {
+               $pdfBinary = \App\Services\PdfService::buildPestControlPdf($id);
+
+               $inline = $this->request->getGet('inline');
+               $filename = "pest_control_{$id}.pdf";
+
+               return $this->response
+                    ->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader(
+                         'Content-Disposition',
+                         ($inline ? 'inline' : 'attachment') . "; filename=\"{$filename}\""
+                    )
+                    ->setBody($pdfBinary);
+          } catch (\Throwable $e) {
+
+               log_message('error', $e->getMessage());
+
+               return $this->response->setStatusCode(500)
+                    ->setBody('PDF generation failed');
+          }
+     }
+
+     // facade cleaning pdf
+
+     public function facadeCleaningPdfDownload(int $id)
+     {
+          try {
+               $pdfBinary = \App\Services\PdfService::buildFacadeCleaningPdf($id);
+
+               $inline = $this->request->getGet('inline');
+               $filename = "facade_cleaning_{$id}.pdf";
+
+               return $this->response
+                    ->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader(
+                         'Content-Disposition',
+                         ($inline ? 'inline' : 'attachment') . "; filename=\"{$filename}\""
+                    )
+                    ->setBody($pdfBinary);
+          } catch (\Throwable $e) {
+
+               log_message('error', $e->getMessage());
+
+               return $this->response->setStatusCode(500)
+                    ->setBody('PDF generation failed');
+          }
+     }
+
+
+     // Water Tank Cleaning Pdf
+
+     public function waterTankCleaningPdfDownload(int $id)
+     {
+          try {
+               $pdfBinary = \App\Services\PdfService::buildWaterTankCleaningPdf($id);
+
+               $inline = $this->request->getGet('inline');
+               $filename = "water_tank_cleaning_{$id}.pdf";
+
+               return $this->response
+                    ->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader(
+                         'Content-Disposition',
+                         ($inline ? 'inline' : 'attachment') . "; filename=\"{$filename}\""
+                    )
+                    ->setBody($pdfBinary);
+          } catch (\Throwable $e) {
+
+               log_message('error', $e->getMessage());
+
+               return $this->response->setStatusCode(500)
+                    ->setBody('PDF generation failed');
+          }
+     }
+
+
+     // Drinking Water pdf
+
+     public function drinkingWaterPdfDownload(int $id)
+     {
+          try {
+               $pdfBinary = \App\Services\PdfService::buildDrinkingWaterPdf($id);
+
+               $inline = $this->request->getGet('inline');
+               $filename = "drinking_water_{$id}.pdf";
+
+               return $this->response
+                    ->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader(
+                         'Content-Disposition',
+                         ($inline ? 'inline' : 'attachment') . "; filename=\"{$filename}\""
+                    )
+                    ->setBody($pdfBinary);
+          } catch (\Throwable $e) {
+
+               log_message('error', $e->getMessage());
+
+               return $this->response->setStatusCode(500)
+                    ->setBody('PDF generation failed');
+          }
+     }
+
+     // bmw pdf
+
+     public function bmwPdfDownload(int $id)
+     {
+          try {
+               $pdfBinary = \App\Services\PdfService::buildBmwPdf($id);
+
+               $inline = $this->request->getGet('inline');
+               $filename = "bmw_{$id}.pdf";
+
+               return $this->response
+                    ->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader(
+                         'Content-Disposition',
+                         ($inline ? 'inline' : 'attachment') . "; filename=\"{$filename}\""
+                    )
+                    ->setBody($pdfBinary);
+          } catch (\Throwable $e) {
+
+               log_message('error', $e->getMessage());
+
+               return $this->response->setStatusCode(500)
+                    ->setBody('PDF generation failed');
+          }
+     }
+
+     // download Biomedical Equipment PDF
+     public function biomedicalEquipmentPdfDownload(int $id)
+     {
+          try {
+               $pdfBinary = \App\Services\PdfService::buildBiomedicalEquipmentPdf($id);
+
+               $inline = $this->request->getGet('inline');
+               $filename = "biomedical_equipment_{$id}.pdf";
+
+               return $this->response
+                    ->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader(
+                         'Content-Disposition',
+                         ($inline ? 'inline' : 'attachment') . "; filename=\"{$filename}\""
+                    )
+                    ->setBody($pdfBinary);
+          } catch (\Throwable $e) {
+
+               log_message('error', $e->getMessage());
+
+               return $this->response->setStatusCode(500)
+                    ->setBody('PDF generation failed');
+          }
+     }
+
+
+
+     /**
+      * Downloadable PDF representation of a ac servicing checklist entry.
+      */
+
+     public function acServicePdfDownload(int $id)
+     {
+          try {
+               $pdfBinary = \App\Services\PdfService::buildAcServicePdf($id);
+
+               $inline = $this->request->getGet('inline');
+               $filename = "ac_service_{$id}.pdf";
+
+               return $this->response
+                    ->setHeader('Content-Type', 'application/pdf')
+                    ->setHeader(
+                         'Content-Disposition',
+                         ($inline ? 'inline' : 'attachment') . "; filename=\"{$filename}\""
+                    )
+                    ->setBody($pdfBinary);
+          } catch (\Throwable $e) {
+
+               log_message('error', $e->getMessage());
+
+               return $this->response->setStatusCode(500)
+                    ->setBody('PDF generation failed');
+          }
+     }
+
+
+     /**
+      * Downloadable PDF representation of a phlebotomy manager checklist entry.
+      */
+
+
+     public function phlebotomyManagerPdfDownload(int $id)
+     {
+          $uri = $this->request->getUri();
+          log_message('error', 'PdfController::phlebotomyManagerPdfDownload invoked, method=' . $this->request->getMethod() . ', path=' . ($uri ? $uri->getPath() : '[none]'));
+
+          try {
+               $output = \App\Services\PdfService::buildPhlebotomyManagerPdf($id);
+          } catch (\RuntimeException $e) {
+               log_message('error', "PdfController::phlebotomyManagerPdfDownload failed: {$e->getMessage()}");
+               return $this->response->setStatusCode(404)->setBody('Phlebotomy manager checklist entry not found');
+          }
+
+          $inline = $this->request->getGet('inline');
+          $disposition = $inline ? 'inline' : 'attachment';
+          return $this->response
+               ->setStatusCode(200)
+               ->setContentType('application/pdf')
+               ->setHeader('Content-Disposition', "$disposition; filename=\"phlebotomy_manager_{$id}.pdf\"")
+               ->setBody($output);
+     }
+
+     /**
+      * Downloadable PDF representation of a cctv entry.
+      */
+
+     public function cctvDownload(int $id)
+     {
+          $uri = $this->request->getUri();
+          log_message('error', 'PdfController::cctvDownload invoked, method=' . $this->request->getMethod() . ', path=' . ($uri ? $uri->getPath() : '[none]'));
+
+          try {
+               $output = \App\Services\PdfService::buildCctvPdf($id);
+          } catch (\RuntimeException $e) {
+               log_message('error', "PdfController::cctvDownload failed: {$e->getMessage()}");
+               return $this->response->setStatusCode(404)->setBody('cctv entry not found');
+          }
+
+          $inline = $this->request->getGet('inline');
+          $disposition = $inline ? 'inline' : 'attachment';
+          return $this->response
+               ->setStatusCode(200)
+               ->setContentType('application/pdf')
+               ->setHeader('Content-Disposition', "$disposition; filename=\"cctv_{$id}.pdf\"")
+               ->setBody($output);
+     }
+
      /**
       * Downloadable PDF representation of a lab weekly checklist entry.
       */

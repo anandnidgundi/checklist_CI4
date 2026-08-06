@@ -1651,6 +1651,41 @@ class Home extends BaseController
      }
 
 
+     // public function getEmpBranches()
+     // {
+
+     //      $userDetails = $this->validateAuthorization();
+     //      $user = $userDetails->emp_code;
+
+     //      $deptModel = new DeptModel();
+     //      $cluster = $deptModel->getUserMapBranches($user);
+
+     //      // make sure we got a row with a 'Branches' column
+     //      $branches = '';
+     //      if (is_array($cluster) && isset($cluster[0]) && array_key_exists('Branches', $cluster[0])) {
+     //           $branches = $cluster[0]['Branches'];
+     //      }
+
+     //      if ($branches === '' || $branches === null) {
+     //           // no branches found for user -> return empty list rather than error
+     //           return $this->respond(['status' => true, 'data' => []], 200);
+     //      }
+
+     //      try {
+     //           $cluster = $deptModel->getUserBranches($branches);
+     //      } catch (\Throwable $__dbEx) {
+     //           // Secondary DB may be unavailable (credentials/grants). Log and return empty list
+     //           log_message('error', 'getEmpBranches: secondary DB lookup failed: ' . $__dbEx->getMessage());
+     //           return $this->respond(['status' => true, 'data' => []], 200);
+     //      }
+
+     //      if ($cluster) {
+     //           return $this->respond(['status' => true, 'data' => $cluster], 200);
+     //      } else {
+     //           return $this->respond(['status' => true, 'data' => []], 200);
+     //      }
+     // }
+
      public function getEmpBranches()
      {
 
@@ -1659,17 +1694,7 @@ class Home extends BaseController
 
           $deptModel = new DeptModel();
           $cluster = $deptModel->getUserMapBranches($user);
-
-          // make sure we got a row with a 'Branches' column
-          $branches = '';
-          if (is_array($cluster) && isset($cluster[0]) && array_key_exists('Branches', $cluster[0])) {
-               $branches = $cluster[0]['Branches'];
-          }
-
-          if ($branches === '' || $branches === null) {
-               // no branches found for user -> return empty list rather than error
-               return $this->respond(['status' => true, 'data' => []], 200);
-          }
+          $branches = $cluster['0']['branches'];
 
           $cluster = $deptModel->getUserBranches($branches);
           if ($cluster) {

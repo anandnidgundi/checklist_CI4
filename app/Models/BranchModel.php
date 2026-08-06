@@ -6,6 +6,21 @@ use CodeIgniter\Model;
 
 class BranchModel extends Model
 {
+
+     /**
+      * Get all modalities.
+      * - Primary source: `secondary` DB -> `modalities` table (travelapp)
+      *
+      * Returns an array of associative arrays (or empty array when none found).
+      */
+     public function getModalities()
+     {
+          // SELECT * FROM `modality` ORDER BY `id` ASC from default DB
+          $defaultDb = \Config\Database::connect();
+
+          $query = $defaultDb->table('modality')->orderBy('modality', 'ASC')->get();
+          return $query->getResultArray();
+     }
      /**
       * Get detailed branch information by id.
       * - Primary source: `secondary` DB -> `Branches` table (travelapp)

@@ -421,14 +421,29 @@ class UserModel extends Model
      public function getITDeptUsersList()
      {
           try {
-               return $this->db->table('new_emp_master as a')
-                    ->select('a.*, b.role')
-                    ->join('bmcm as b', 'b.emp_code = a.emp_code', 'left')
-                    ->where('a.active', 'Active')
+               // Fetch emp_codes for IT roles from the secondary DB's user_map table
+               $roleRows = $this->db->table('bmcm')
+                    ->select('emp_code, role')
                     ->groupStart()
-                    ->where('b.role', 'IT')
-                    ->orWhere('b.role', 'IT_ADMIN')
+                    ->where('role', 'IT')
+                    ->orWhere('role', 'IT_ADMIN')
                     ->groupEnd()
+                    ->get()
+                    ->getResultArray();
+
+               $empCodes = array_values(array_unique(array_map(function ($r) {
+                    return (string)($r['emp_code'] ?? '');
+               }, $roleRows)));
+
+               if (empty($empCodes)) {
+                    return [];
+               }
+
+               // Fetch employee details from the secondary DB (new_emp_master)
+               return $this->db->table('new_emp_master as a')
+                    ->select('a.*')
+                    ->whereIn('a.emp_code', $empCodes)
+                    ->where('a.active', 'Active')
                     ->orderBy('a.emp_code', 'asc')
                     ->get()
                     ->getResultArray();

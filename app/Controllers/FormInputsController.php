@@ -76,6 +76,27 @@ class FormInputsController extends BaseController
           return $this->respond(['status' => true, 'data' => $row], 200);
      }
 
+     // getFormInputSelectById, if the input type is select, then get the options from input_options field and return as array
+     public function getFormInputSelectById($id = null)
+     {
+          $auth = $this->validateAuthorization();
+          if ($auth instanceof ResponseInterface) return $auth;
+
+          $inputId = is_numeric($id) ? (int) $id : 0;
+          if ($inputId <= 0) {
+               return $this->respond(['status' => false, 'message' => 'Invalid id'], 400);
+          }
+
+          $row = $this->formInputsModel->find($inputId);
+          if (!$row) {
+               return $this->respond(['status' => false, 'message' => 'Form input not found'], 404);
+          }
+
+          $row['roles_allowed'] = $this->decodeRolesAllowed($row['roles_allowed'] ?? null);
+
+          return $this->respond(['status' => true, 'data' => $row], 200);
+     }
+
      public function addFormInput()
      {
           $auth = $this->validateAuthorization();

@@ -42,6 +42,7 @@ class EmailController extends Controller
           if (!$template) {
                return 'Template not found';
           }
+
           // Normalise common aliases so templates get a consistent variables set
           // - branch_manager -> branch_manager_name
           // - centre_name -> branch_name
@@ -76,7 +77,7 @@ class EmailController extends Controller
 
           // Load SMTP credentials from .env
           $mailUsername = getenv('SMTP_USERNAME') ?: 'emailappsmtp.4f7bbead59206e3e';
-          $mailPassword = getenv('SMTP_PASSWORD') ?: '4f7bbead59206e3e_LB7cVCgqGGv9';
+          $mailPassword = getenv('SMTP_PASSWORD');
 
 
           $mail = new PHPMailer(true);
@@ -121,7 +122,36 @@ class EmailController extends Controller
                     $toEmail = getenv('LAB_MANAGER_WEEKLY_CHECKLIST_TO_EMAIL') ?: '';
                     $toName = 'Lab Manager';
                }
-               $mail->addAddress($toEmail, $toName);
+
+               $toCandidates = [];
+               if (is_array($toEmail)) {
+                    $toCandidates = $toEmail;
+               } else {
+                    $toCandidates = preg_split('/[\s,;]+/', (string)$toEmail);
+               }
+
+               $primaryToEmail = null;
+               $extraToEmails = [];
+               foreach ($toCandidates as $candidate) {
+                    $candidate = trim((string)$candidate);
+                    if ($candidate === '') {
+                         continue;
+                    }
+                    if (filter_var($candidate, FILTER_VALIDATE_EMAIL)) {
+                         if ($primaryToEmail === null) {
+                              $primaryToEmail = $candidate;
+                         } else {
+                              $extraToEmails[] = $candidate;
+                         }
+                    }
+               }
+
+               if ($primaryToEmail !== null) {
+                    $mail->addAddress($primaryToEmail, $toName);
+                    foreach ($extraToEmails as $extraToEmail) {
+                         $mail->addCC($extraToEmail);
+                    }
+               }
 
                // if caller requested a checklist PDF attachment, generate it now
                if (!empty($data['checklist_id'])) {
@@ -206,6 +236,8 @@ class EmailController extends Controller
                          $isItChecklist = false;
                          $isLabDailyChecklist = false;
                          $isLabWeeklyChecklist = false;
+                         $isCCTVChecklist = false;
+                         $isPhlebotomyManagerChecklist = false;
                          if ($resolvedFormName !== '') {
                               $resolvedFormNameLower = strtolower($resolvedFormName);
                               $isItChecklist = (strpos($resolvedFormNameLower, 'it_checklist') !== false)
@@ -216,6 +248,10 @@ class EmailController extends Controller
                                    || (strpos($resolvedFormNameLower, 'lab daily') !== false);
                               $isLabWeeklyChecklist = (strpos($resolvedFormNameLower, 'lab_weekly_checklist') !== false)
                                    || (strpos($resolvedFormNameLower, 'lab weekly') !== false);
+                              $isCCTVChecklist = (strpos($resolvedFormNameLower, 'cctv_inspection') !== false)
+                                   || (strpos($resolvedFormNameLower, 'cctv checklist') !== false);
+                              $isPhlebotomyManagerChecklist = (strpos($resolvedFormNameLower, 'phlebotomy_manager_checklist') !== false)
+                                   || (strpos($resolvedFormNameLower, 'phlebotomy manager checklist') !== false);
                          } else {
                               $formName = strtolower(trim((string)($data['form_name'] ?? '')));
                               $isItChecklist = (strpos($formName, 'it_checklist') !== false)
@@ -226,6 +262,10 @@ class EmailController extends Controller
                                    || (strpos($formName, 'lab daily') !== false);
                               $isLabWeeklyChecklist = (strpos($formName, 'lab_weekly_checklist') !== false)
                                    || (strpos($formName, 'lab weekly') !== false);
+                              $isCCTVChecklist = (strpos($formName, 'cctv_inspection') !== false)
+                                   || (strpos($formName, 'cctv checklist') !== false);
+                              $isPhlebotomyManagerChecklist = (strpos($formName, 'phlebotomy_manager_checklist') !== false)
+                                   || (strpos($formName, 'phlebotomy manager checklist') !== false);
                          }
 
                          if ($isMaintenance) {
@@ -240,6 +280,12 @@ class EmailController extends Controller
                          } elseif ($isLabWeeklyChecklist) {
                               $pdfBytes = \App\Services\PdfService::buildLabWeeklyPdf($cid); // Use the correct builder for Lab Weekly
                               $mail->addStringAttachment($pdfBytes, "lab_weekly_checklist_{$cid}.pdf");
+                         } elseif ($isCCTVChecklist) {
+                              $pdfBytes = \App\Services\PdfService::buildCctvPdf($cid);
+                              $mail->addStringAttachment($pdfBytes, "cctv_checklist_{$cid}.pdf");
+                         } elseif ($isPhlebotomyManagerChecklist) {
+                              $pdfBytes = \App\Services\PdfService::buildPhlebotomyManagerPdf($cid);
+                              $mail->addStringAttachment($pdfBytes, "phlebotomy_manager_checklist_{$cid}.pdf");
                          } else {
                               $pdfBytes = \App\Services\PdfService::buildChecklistPdf($cid);
                               $mail->addStringAttachment($pdfBytes, "checklist_{$cid}.pdf");

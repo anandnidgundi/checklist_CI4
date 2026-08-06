@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 
-     <head>
-          <meta charset="utf-8" />
-          <title>Lab Manager Checklist <?= esc($phlebotomy['id'] ?? '') ?></title>
-          <style>
+<head>
+     <meta charset="utf-8" />
+     <title>Lab Manager Checklist <?= esc($phlebotomy['id'] ?? '') ?></title>
+     <style>
           body {
                font-family: "Helvetica Neue", Arial, sans-serif;
                color: #1f2937;
@@ -233,12 +233,11 @@
                     padding: 0;
                }
           }
+     </style>
+</head>
 
-          </style>
-     </head>
-
-     <body>
-          <?php
+<body>
+     <?php
      $makeSrc = function ($fn) {
           if (!$fn) return '';
 
@@ -394,6 +393,48 @@
           return $text;
      };
 
+     $looksLikeTechnicalSlug = function ($value) {
+          $text = strtolower(trim((string) $value));
+          if ($text === '') {
+               return false;
+          }
+
+          return (bool) preg_match('/^(s\d+__ss\d+__.+|attach_.+|photo_.+|image_.+|file_.+|[a-z0-9]+(?:_[a-z0-9]+)+)$/', $text);
+     };
+
+     $normalizeLabelText = function ($value) use ($humanize) {
+          $text = trim((string) $value);
+          if ($text === '') {
+               return '';
+          }
+
+          $text = preg_replace('/^s\d+__ss\d+__/', '', $text);
+          $text = str_replace(['_', '-'], ' ', $text);
+          $text = preg_replace('/\s+/', ' ', $text);
+          return trim($humanize($text));
+     };
+
+     $resolvePhotoLabel = function ($row) use ($normalizeLabelText) {
+          if (!is_array($row)) {
+               return '';
+          }
+
+          $candidateKeys = ['input_label', 'label', 'title', 'field_label', 'field_title', 'input_title', 'item_label', 'photo_label', 'caption'];
+          foreach ($candidateKeys as $key) {
+               $value = trim((string) ($row[$key] ?? ''));
+               if ($value !== '') {
+                    return $normalizeLabelText($value);
+               }
+          }
+
+          $inputName = trim((string) ($row['input_name'] ?? ''));
+          if ($inputName !== '') {
+               return $normalizeLabelText($inputName);
+          }
+
+          return '';
+     };
+
      $isCriticalValue = function ($text) {
           $needle = strtolower(trim((string)$text));
           $needle = str_replace('_', ' ', $needle);
@@ -414,29 +455,29 @@
      };
      ?>
 
-          <div class="pdf-wrapper">
-               <div class="pdf-header">
-                    <table>
-                         <tr>
-                              <td style="border:none; padding:0;">
+     <div class="pdf-wrapper">
+          <div class="pdf-header">
+               <table>
+                    <tr>
+                         <td style="border:none; padding:0;">
 
-                                   <?php if ($logoSrc): ?>
+                              <?php if ($logoSrc): ?>
                                    <img src="<?= esc($logoSrc) ?>" class="logo" alt="logo" />
-                                   <?php endif; ?>
+                              <?php endif; ?>
 
-                              </td>
-                              <td style="border:none; padding:0;  ">
+                         </td>
+                         <td style="border:none; padding:0;  ">
 
-                                   <div class="company-name">Vijaya Diagnostic Centre Limited</div>
-                                   <div class="title">Lab Manager Checklist</div>
+                              <div class="company-name">Vijaya Diagnostic Centre Limited</div>
+                              <div class="title">Lab Manager Checklist</div>
 
-                              </td>
-                         </tr>
-                    </table>
-               </div>
+                         </td>
+                    </tr>
+               </table>
+          </div>
 
-               <div class="summary-card">
-                    <?php
+          <div class="summary-card">
+               <?php
                $auditedBy = trim((string) ($phlebotomy['audited_by'] ?? ''));
                $auditedByMobile = trim((string) ($phlebotomy['audited_by_mobile'] ?? $phlebotomy['audited_by_phone'] ?? $phlebotomy['audited_by_contact'] ?? ''));
                $visitedBy = $auditedBy;
@@ -450,7 +491,6 @@
                     'Visit Time' => $phlebotomy['visit_time'] ?? '',
                     'Visited By' => $visitedBy,
                     'Branch Manager' => $phlebotomy['branch_manager'] ?? '',
-                    'Cluster Manager' => $phlebotomy['cluster_manager'] ?? '',
                     'Contact' => $phlebotomy['contact'] ?? '',
                     'Notes' => $phlebotomy['notes'] ?? '',
                ];
@@ -461,24 +501,24 @@
                     }
                }
                ?>
-                    <table class="header-table">
-                         <?php for ($i = 0; $i < count($summaryItems); $i += 2): ?>
+               <table class="header-table">
+                    <?php for ($i = 0; $i < count($summaryItems); $i += 2): ?>
                          <tr>
                               <th><?= esc($summaryItems[$i]['label']) ?></th>
                               <td><?= esc($summaryItems[$i]['value']) ?></td>
                               <?php if (isset($summaryItems[$i + 1])): ?>
-                              <th><?= esc($summaryItems[$i + 1]['label']) ?></th>
-                              <td><?= esc($summaryItems[$i + 1]['value']) ?></td>
+                                   <th><?= esc($summaryItems[$i + 1]['label']) ?></th>
+                                   <td><?= esc($summaryItems[$i + 1]['value']) ?></td>
                               <?php else: ?>
-                              <th></th>
-                              <td></td>
+                                   <th></th>
+                                   <td></td>
                               <?php endif; ?>
                          </tr>
-                         <?php endfor; ?>
-                    </table>
-               </div>
+                    <?php endfor; ?>
+               </table>
+          </div>
 
-               <?php if (!empty($phlebotomy['records'])): ?>
+          <?php if (!empty($phlebotomy['records'])): ?>
                <?php
                $grouped = [];
                foreach ($phlebotomy['records'] as $r) {
@@ -489,14 +529,14 @@
                ?>
 
                <?php foreach ($grouped as $sec => $subs): ?>
-               <h5 class="section-title"><?= esc($sec) ?></h5>
-               <?php foreach ($subs as $sub => $rows): ?>
-               <?php if ($sub !== ''): ?>
-               <b class="subsection-title"><?= esc($sub) ?></b>
-               <?php endif; ?>
-               <table>
-                    <?php foreach ($rows as $r): ?>
-                    <?php
+                    <h5 class="section-title"><?= esc($sec) ?></h5>
+                    <?php foreach ($subs as $sub => $rows): ?>
+                         <?php if ($sub !== ''): ?>
+                              <b class="subsection-title"><?= esc($sub) ?></b>
+                         <?php endif; ?>
+                         <table>
+                              <?php foreach ($rows as $r): ?>
+                                   <?php
                                    $rawLabel = $r['input_label'] ?? $r['input_name'] ?? $r['item_label'] ?? '';
                                    $displayLabel = $rawLabel !== '' ? $rawLabel : '';
                                    if ($displayLabel === '' && !empty($r['input_name'])) {
@@ -507,21 +547,45 @@
                                    $criticalDisplay = trim((string)$displayValue);
                                    $isCritical = $isCriticalValue($criticalRaw) || $isCriticalValue($criticalDisplay);
                                    ?>
-                    <tr>
-                         <td style="width:60%;"><?= esc($displayLabel) ?>:</td>
-                         <td><strong
-                                   class="<?= $isCritical ? 'critical-status' : '' ?>"><?= nl2br(esc($displayValue)) ?></strong>
-                         </td>
-                    </tr>
+                                   <tr>
+                                        <td style="width:60%;"><?= esc($displayLabel) ?>:</td>
+                                        <td><strong
+                                                  class="<?= $isCritical ? 'critical-status' : '' ?>"><?= nl2br(esc($displayValue)) ?></strong>
+                                        </td>
+                                   </tr>
+                              <?php endforeach; ?>
+                         </table>
+
                     <?php endforeach; ?>
-               </table>
-
                <?php endforeach; ?>
-               <?php endforeach; ?>
-               <?php endif; ?>
+          <?php endif; ?>
 
-               <?php
+          <?php
           $branchNameDisplay = trim((string) ($phlebotomy['branch_name'] ?? $phlebotomy['centre_name'] ?? ''));
+          $photoLabelByFilename = [];
+          foreach (($phlebotomy['records'] ?? []) as $recordRow) {
+               $recordLabel = $resolvePhotoLabel($recordRow);
+               if ($recordLabel === '') {
+                    continue;
+               }
+
+               $recordFiles = [];
+               if (!empty($recordRow['attachments'])) {
+                    if (is_array($recordRow['attachments'])) {
+                         $recordFiles = $recordRow['attachments'];
+                    } else {
+                         $recordFiles = preg_split('/\s*,\s*/', (string) $recordRow['attachments'], -1, PREG_SPLIT_NO_EMPTY);
+                    }
+               }
+
+               foreach ($recordFiles as $recordFile) {
+                    $recordFilename = basename((string) $recordFile);
+                    if ($recordFilename !== '') {
+                         $photoLabelByFilename[$recordFilename] = $recordLabel;
+                    }
+               }
+          }
+
           $renderedPhotoFiles = [];
           foreach (($phlebotomy['records'] ?? []) as $r) {
                $files = [];
@@ -544,11 +608,20 @@
                          continue;
                     }
           ?>
-               <div class="attachment-wrapper">
-                    <img src="<?= esc($src) ?>" alt="attachment" />
-                    <?php if ($createdDtmDisplay || $branchNameDisplay !== ''): ?>
-                    <?php
+                    <div class="attachment-wrapper">
+                         <img src="<?= esc($src) ?>" alt="attachment" />
+                         <?php
+                         $photoLabelDisplay = $resolvePhotoLabel($r);
+                         if ($photoLabelDisplay === '' && isset($photoLabelByFilename[$filename])) {
+                              $photoLabelDisplay = $photoLabelByFilename[$filename];
+                         }
+                         ?>
+                         <?php if ($photoLabelDisplay !== '' || $createdDtmDisplay || $branchNameDisplay !== ''): ?>
+                              <?php
                               $photoMeta = [];
+                              if ($photoLabelDisplay !== '') {
+                                   $photoMeta[] = 'Label: ' . $photoLabelDisplay;
+                              }
                               if ($createdDtmDisplay) {
                                    $photoMeta[] = 'Photo uploaded on ' . $createdDtmDisplay;
                               }
@@ -556,16 +629,16 @@
                                    $photoMeta[] = 'Branch: ' . $branchNameDisplay;
                               }
                               ?>
-                    <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              </div>
+                         <?php endif; ?>
                     </div>
-                    <?php endif; ?>
-               </div>
-               <?php
+          <?php
                }
           }
           ?>
 
-               <?php if (!empty($phlebotomy['photos'])): ?>
+          <?php if (!empty($phlebotomy['photos'])): ?>
                <?php foreach ($phlebotomy['photos'] as $p):
                     $fn = $p['url'] ?? $p['filename'] ?? $p['photo'] ?? $p['file'] ?? '';
                     $filename = basename((string)$fn);
@@ -576,12 +649,21 @@
                     $src = $makeSrc($fn);
                     if (!$src) continue;
                ?>
-               <div style="margin-bottom:16px; page-break-inside: avoid;">
-                    <img src="<?= esc($src) ?>" alt="photo"
-                         style="max-height:640px; width:auto; display:block; margin:auto;" />
-                    <?php if ($createdDtmDisplay || $branchNameDisplay !== ''): ?>
-                    <?php
+                    <div style="margin-bottom:16px; page-break-inside: avoid;">
+                         <img src="<?= esc($src) ?>" alt="photo"
+                              style="max-height:640px; width:auto; display:block; margin:auto;" />
+                         <?php
+                         $photoLabelDisplay = $resolvePhotoLabel($p);
+                         if ($photoLabelDisplay === '' && isset($photoLabelByFilename[$filename])) {
+                              $photoLabelDisplay = $photoLabelByFilename[$filename];
+                         }
+                         ?>
+                         <?php if ($photoLabelDisplay !== '' || $createdDtmDisplay || $branchNameDisplay !== ''): ?>
+                              <?php
                               $photoMeta = [];
+                              if ($photoLabelDisplay !== '') {
+                                   $photoMeta[] = 'Label: ' . $photoLabelDisplay;
+                              }
                               if ($createdDtmDisplay) {
                                    $photoMeta[] = 'Photo uploaded on ' . $createdDtmDisplay;
                               }
@@ -589,13 +671,13 @@
                                    $photoMeta[] = 'Branch: ' . $branchNameDisplay;
                               }
                               ?>
-                    <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              </div>
+                         <?php endif; ?>
                     </div>
-                    <?php endif; ?>
-               </div>
                <?php endforeach; ?>
-               <?php endif; ?>
-          </div>
-     </body>
+          <?php endif; ?>
+     </div>
+</body>
 
 </html>

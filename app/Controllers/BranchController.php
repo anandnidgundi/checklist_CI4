@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Controllers\BaseController;
 use App\Models\BranchModel;
+
 use CodeIgniter\API\ResponseTrait;
 use CodeIgniter\HTTP\ResponseInterface;
 use App\Services\JwtService;
@@ -11,6 +12,21 @@ use App\Services\JwtService;
 class BranchController extends BaseController
 {
      use ResponseTrait;
+
+     public function getModalities()
+     {
+          $userDetails = $this->validateAuthorization();
+          $user = $userDetails->emp_code;
+
+          $branchModel = new BranchModel();
+          $modalities = $branchModel->getModalities();
+
+          if ($modalities) {
+               return $this->respond(['status' => true, 'data' => $modalities], 200);
+          } else {
+               return $this->respond(['status' => false, 'message' => 'No modalities found'], 404);
+          }
+     }
 
      /**
       * GET /branch/{id}
@@ -54,4 +70,3 @@ class BranchController extends BaseController
           }
      }
 }
-

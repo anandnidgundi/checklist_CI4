@@ -765,6 +765,7 @@ class BM_Tasks extends BaseController
 
           $db = \Config\Database::connect();
           $db2 = \Config\Database::connect('secondary');
+          $vdcinfodb = \Config\Database::connect('vdcinfo');
           $branchDetails = [];
 
           try {
@@ -776,10 +777,10 @@ class BM_Tasks extends BaseController
                }
 
                $branchInfoDb = null;
-               if ($db->tableExists('branch_info')) {
+               if ($vdcinfodb->tableExists('branch_info')) {
+                    $branchInfoDb = $vdcinfodb;
+               } elseif ($db->tableExists('branch_info')) {
                     $branchInfoDb = $db;
-               } elseif ($db2->tableExists('branch_info')) {
-                    $branchInfoDb = $db2;
                }
 
                if ($branchesDb) {

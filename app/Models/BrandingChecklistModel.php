@@ -615,33 +615,54 @@ class BrandingChecklistModel extends Model
       * Find branch manager mapping in user_map for a given branch id.
       * Returns null if not found or an array with emp_code, fname, lname, mobile, role
       */
+     // public function getBranchManagerByBranchId($branchId)
+     // {
+     //      $db = \Config\Database::connect();
+
+     //      // 1) Try to find a user mapped to this branch with an explicit branch role (avoid matching ZONAL_MANAGER etc.)
+     //      $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) AND (role = 'BRANCH_MANAGER' OR role = 'BM' OR role LIKE '%BRANCH%') LIMIT 1";
+     //      $row = $db->query($sql, [(int)$branchId])->getRowArray();
+
+     //      // 2) If not found, try a broader match but avoid matching generic 'MANAGER' entries that are not branch-specific
+     //      if (!$row) {
+     //           $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) LIMIT 1";
+     //           $row = $db->query($sql, [(int)$branchId])->getRowArray();
+     //      }
+
+     //      if (!$row) return null;
+
+     //      // fetch employee details from secondary DB (new_emp_master)
+     //      $db2 = \Config\Database::connect('secondary');
+     //      $emp = $db2->table('new_emp_master')->select('emp_code, fname, lname, mobile')->where('emp_code', $row['emp_code'])->get()->getRowArray();
+
+     //      return [
+     //           'emp_code' => $row['emp_code'],
+     //           'role' => $row['role'] ?? null,
+     //           'fname' => $emp['fname'] ?? null,
+     //           'lname' => $emp['lname'] ?? null,
+     //           'mobile' => $emp['mobile'] ?? null
+     //      ];
+     // }
+
      public function getBranchManagerByBranchId($branchId)
      {
-          $db = \Config\Database::connect();
+          // $db = \Config\Database::connect();
+          $vdcinfodb = \Config\Database::connect('vdcinfo');
+          // use branch_info table to find the all data related to branch and then get the manager details from user_map and new_emp_master
 
-          // 1) Try to find a user mapped to this branch with an explicit branch role (avoid matching ZONAL_MANAGER etc.)
-          $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) AND (role = 'BRANCH_MANAGER' OR role = 'BM' OR role LIKE '%BRANCH%') LIMIT 1";
-          $row = $db->query($sql, [(int)$branchId])->getRowArray();
+          $bid = (int)$branchId;
+          $data = $vdcinfodb->table('branch_info')->where('branch_id', $bid)->get()->getRowArray();
+          if (!$data) return null;
 
-          // 2) If not found, try a broader match but avoid matching generic 'MANAGER' entries that are not branch-specific
-          if (!$row) {
-               $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) LIMIT 1";
-               $row = $db->query($sql, [(int)$branchId])->getRowArray();
-          }
-
-          if (!$row) return null;
-
-          // fetch employee details from secondary DB (new_emp_master)
-          $db2 = \Config\Database::connect('secondary');
-          $emp = $db2->table('new_emp_master')->select('emp_code, fname, lname, mobile')->where('emp_code', $row['emp_code'])->get()->getRowArray();
-
-          return [
-               'emp_code' => $row['emp_code'],
-               'role' => $row['role'] ?? null,
-               'fname' => $emp['fname'] ?? null,
-               'lname' => $emp['lname'] ?? null,
-               'mobile' => $emp['mobile'] ?? null
+          $out  = [
+               'emp_code' => null,
+               'role' => $data['role'] ?? 'BM',
+               'fname' => $data['branch_manager_name'] ?? null,
+               'lname' => $data['lname'] ?? null,
+               'mobile' => $data['branch_manager_mobile'] ?? null,
+               'email' => $data['branch_manager_email'] ?? $data['branch_email'] ?? null,
           ];
+          return $out;
      }
 
      /**
@@ -664,32 +685,52 @@ class BrandingChecklistModel extends Model
       * Find cluster manager mapping in user_map for a given branch id.
       * Returns null if not found or an array with emp_code, fname, lname, mobile, role
       */
+     // public function getClusterManagerByBranchId($branchId)
+     // {
+     //      $db = \Config\Database::connect();
+
+     //      // 1) Try to find a user mapped to this branch with an explicit cluster role
+     //      $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) AND (role = 'CLUSTER_MANAGER' OR role = 'CM' OR role LIKE '%CLUSTER%') LIMIT 1";
+     //      $row = $db->query($sql, [(int)$branchId])->getRowArray();
+
+     //      // 2) If not found, try a broader match for any user mapped to this branch
+     //      if (!$row) {
+     //           $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) LIMIT 1";
+     //           $row = $db->query($sql, [(int)$branchId])->getRowArray();
+     //      }
+
+     //      if (!$row) return null;
+
+     //      // fetch employee details from secondary DB (new_emp_master)
+     //      $db2 = \Config\Database::connect('secondary');
+     //      $emp = $db2->table('new_emp_master')->select('emp_code, fname, lname, mobile')->where('emp_code', $row['emp_code'])->get()->getRowArray();
+
+     //      return [
+     //           'emp_code' => $row['emp_code'],
+     //           'role' => $row['role'] ?? null,
+     //           'fname' => $emp['fname'] ?? null,
+     //           'lname' => $emp['lname'] ?? null,
+     //           'mobile' => $emp['mobile'] ?? null
+     //      ];
+     // }
+
      public function getClusterManagerByBranchId($branchId)
      {
-          $db = \Config\Database::connect();
+          //$db = \Config\Database::connect();
+          $vdcinfodb = \Config\Database::connect('vdcinfo');
+          // use branch_info table to find the all data related to branch and then get the manager details from user_map and new_emp_master
 
-          // 1) Try to find a user mapped to this branch with an explicit cluster role
-          $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) AND (role = 'CLUSTER_MANAGER' OR role = 'CM' OR role LIKE '%CLUSTER%') LIMIT 1";
-          $row = $db->query($sql, [(int)$branchId])->getRowArray();
+          $bid = (int)$branchId;
+          $data = $vdcinfodb->table('branch_info')->where('branch_id', $bid)->get()->getRowArray();
+          if (!$data) return null;
 
-          // 2) If not found, try a broader match for any user mapped to this branch
-          if (!$row) {
-               $sql = "SELECT * FROM user_map WHERE FIND_IN_SET(?, branches) LIMIT 1";
-               $row = $db->query($sql, [(int)$branchId])->getRowArray();
-          }
-
-          if (!$row) return null;
-
-          // fetch employee details from secondary DB (new_emp_master)
-          $db2 = \Config\Database::connect('secondary');
-          $emp = $db2->table('new_emp_master')->select('emp_code, fname, lname, mobile')->where('emp_code', $row['emp_code'])->get()->getRowArray();
-
-          return [
-               'emp_code' => $row['emp_code'],
-               'role' => $row['role'] ?? null,
-               'fname' => $emp['fname'] ?? null,
-               'lname' => $emp['lname'] ?? null,
-               'mobile' => $emp['mobile'] ?? null
+          $out  = [
+               'emp_code' => null,
+               'role' => $data['role'] ?? 'CM',
+               'fname' => $data['cluster_manager_name'] ?? null,
+               'lname' => $data['lname'] ?? null,
+               'mobile' => $data['cluster_manager_mobile'] ?? null,
           ];
+          return $out;
      }
 }

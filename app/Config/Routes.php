@@ -9,6 +9,53 @@ $routes->GET('/', 'Home::index');
 $routes->GET('viewAttachment/(:any)', 'FileUpload::viewAttachment/$1');
 $routes->GET('viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
 $routes->GET('viewAttachmentNewThumb/(:any)', 'FileUpload::viewAttachmentNewThumb/$1');
+
+// viewAcAttachment 
+$routes->GET('viewAcAttachment/(:any)', 'FileUpload::viewAcAttachment/$1');
+$routes->GET('backend/viewAcAttachment/(:any)', 'FileUpload::viewAcAttachment/$1');
+// viewAcAttachmentNewThumb
+$routes->GET('viewAcAttachmentNewThumb/(:any)', 'FileUpload::viewAcAttachmentNewThumb/$1');
+$routes->GET('backend/viewAcAttachmentNewThumb/(:any)', 'FileUpload::viewAcAttachmentNewThumb/$1');
+// viewBioAttachment
+$routes->GET('viewBioAttachment/(:any)', 'FileUpload::viewBioAttachment/$1');
+$routes->GET('backend/viewBioAttachment/(:any)', 'FileUpload::viewBioAttachment/$1');
+// viewBioAttachmentNewThumb
+$routes->GET('viewBioAttachmentNewThumb/(:any)', 'FileUpload::viewBioAttachmentNewThumb/$1');
+$routes->GET('backend/viewBioAttachmentNewThumb/(:any)', 'FileUpload::viewBioAttachmentNewThumb/$1');
+// viewBmwAttachment
+$routes->GET('viewBmwAttachment/(:any)', 'FileUpload::viewBmwAttachment/$1');
+$routes->GET('backend/viewBmwAttachment/(:any)', 'FileUpload::viewBmwAttachment/$1');
+// viewBmwAttachmentNewThumb
+$routes->GET('viewBmwAttachmentNewThumb/(:any)', 'FileUpload::viewBmwAttachmentNewThumb/$1');
+$routes->GET('backend/viewBmwAttachmentNewThumb/(:any)', 'FileUpload::viewBmwAttachmentNewThumb/$1');
+// viewDrinkingWaterAttachment
+$routes->GET('viewDrinkingWaterAttachment/(:any)', 'FileUpload::viewDrinkingWaterAttachment/$1');
+$routes->GET('backend/viewDrinkingWaterAttachment/(:any)', 'FileUpload::viewDrinkingWaterAttachment/$1');
+// viewDrinkingWaterAttachmentNewThumb
+$routes->GET('viewDrinkingWaterAttachmentNewThumb/(:any)', 'FileUpload::viewDrinkingWaterAttachmentNewThumb/$1');
+$routes->GET('backend/viewDrinkingWaterAttachmentNewThumb/(:any)', 'FileUpload::viewDrinkingWaterAttachmentNewThumb/$1');
+// viewWaterTankCleaningAttachment
+$routes->GET('viewWaterTankCleaningAttachment/(:any)', 'FileUpload::viewWaterTankCleaningAttachment/$1');
+$routes->GET('backend/viewWaterTankCleaningAttachment/(:any)', 'FileUpload::viewWaterTankCleaningAttachment/$1');
+// viewWaterTankCleaningAttachmentNewThumb
+$routes->GET('viewWaterTankCleaningAttachmentNewThumb/(:any)', 'FileUpload::viewWaterTankCleaningAttachmentNewThumb/$1');
+$routes->GET('backend/viewWaterTankCleaningAttachmentNewThumb/(:any)', 'FileUpload::viewWaterTankCleaningAttachmentNewThumb/$1');
+// viewFacadeAttachment
+$routes->GET('viewFacadeAttachment/(:any)', 'FileUpload::viewFacadeAttachment/$1');
+$routes->GET('backend/viewFacadeAttachment/(:any)', 'FileUpload::viewFacadeAttachment/$1');
+// viewFacadeAttachmentNewThumb
+$routes->GET('viewFacadeAttachmentNewThumb/(:any)', 'FileUpload::viewFacadeAttachmentNewThumb/$1');
+$routes->GET('backend/viewFacadeAttachmentNewThumb/(:any)', 'FileUpload::viewFacadeAttachmentNewThumb/$1');
+// viewPestControlAttachment
+$routes->GET('viewPestControlAttachment/(:any)', 'FileUpload::viewPestControlAttachment/$1');
+$routes->GET('backend/viewPestControlAttachment/(:any)', 'FileUpload::viewPestControlAttachment/$1');
+// viewPestControlAttachmentNewThumb
+$routes->GET('viewPestControlAttachmentNewThumb/(:any)', 'FileUpload::viewPestControlAttachmentNewThumb/$1');
+$routes->GET('backend/viewPestControlAttachmentNewThumb/(:any)', 'FileUpload::viewPestControlAttachmentNewThumb/$1');
+
+
+// temporary debug route to inspect which DB host/user the web process reads (masked)
+$routes->GET('debug/db', 'Debug::db');
 // Backwards-compatible routes for deployments where the CI app is under a 'backend' folder
 $routes->GET('backend/viewAttachment/(:any)', 'FileUpload::viewAttachment/$1');
 $routes->GET('backend/viewAttachmentNew/(:any)', 'FileUpload::viewAttachmentNew/$1');
@@ -38,6 +85,41 @@ $routes->GET('backend/pdf/lab_daily_download/(:any)', 'PdfController::labDailyDo
 $routes->GET('pdf/phlebotomy_download/(:any)', 'PdfController::phlebotomyDownload/$1');
 $routes->GET('backend/pdf/phlebotomy_download/(:any)', 'PdfController::phlebotomyDownload/$1');
 
+// CCTV specific PDF download
+$routes->GET('pdf/cctv_download/(:any)', 'PdfController::cctvDownload/$1');
+$routes->GET('backend/pdf/cctv_download/(:any)', 'PdfController::cctvDownload/$1');
+
+// Phlebotomy Manager specific PDF download
+$routes->GET('pdf/phlebotomy_manager_download/(:any)', 'PdfController::phlebotomyManagerPdfDownload/$1');
+$routes->GET('backend/pdf/phlebotomy_manager_download/(:any)', 'PdfController::phlebotomyManagerPdfDownload/$1');
+
+// AC Service specific PDF download
+$routes->GET('pdf/ac_service_download/(:any)', 'PdfController::acServicePdfDownload/$1');
+$routes->GET('backend/pdf/ac_service_download/(:any)', 'PdfController::acServicePdfDownload/$1');
+
+// Biomedical Equipment specific PDF download
+$routes->GET('pdf/biomedical_equipment_download/(:any)', 'PdfController::biomedicalEquipmentPdfDownload/$1');
+$routes->GET('backend/pdf/biomedical_equipment_download/(:any)', 'PdfController::biomedicalEquipmentPdfDownload/$1');
+
+// bmw specific PDF download
+$routes->GET('pdf/bmw_download/(:any)', 'PdfController::bmwPdfDownload/$1');
+$routes->GET('backend/pdf/bmw_download/(:any)', 'PdfController::bmwPdfDownload/$1');
+
+// drinking water specific PDF download
+$routes->GET('pdf/drinking_water_download/(:any)', 'PdfController::drinkingWaterPdfDownload/$1');
+$routes->GET('backend/pdf/drinking_water_download/(:any)', 'PdfController::drinkingWaterPdfDownload/$1');
+
+// water tank specific PDF download
+$routes->GET('pdf/water_tank_download/(:any)', 'PdfController::waterTankCleaningPdfDownload/$1');
+$routes->GET('backend/pdf/water_tank_download/(:any)', 'PdfController::waterTankCleaningPdfDownload/$1');
+
+// facade cleaning specific PDF download
+$routes->GET('pdf/facade_download/(:any)', 'PdfController::facadeCleaningPdfDownload/$1');
+$routes->GET('backend/pdf/facade_download/(:any)', 'PdfController::facadeCleaningPdfDownload/$1');
+
+// pest control specific PDF download
+$routes->GET('pdf/pest_control_download/(:any)', 'PdfController::pestControlPdfDownload/$1');
+$routes->GET('backend/pdf/pest_control_download/(:any)', 'PdfController::pestControlPdfDownload/$1');
 
 
 $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
@@ -50,11 +132,8 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], "getFiles", "FileUpload::getFiles", ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], "download/(:segment)", "FileUpload::download/$1", ['filter' => 'authFilter']);
 
-
-
      $routes->match(['POST', 'options'], "addBM_Task", "BM_Tasks::addBM_Task", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getBM_TaskDetails/(:segment)", "BM_Tasks::getBM_TaskDetails/$1", ['filter' => 'authFilter']);
-
 
      $routes->match(['POST', 'options'], "editBM_Task/(:segment)", "BM_Tasks::editBM_Task/$1", ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], "getBM_TaskList", "BM_Tasks::getBM_TaskList", ['filter' => 'authFilter']);
@@ -466,6 +545,9 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      // New: detailed branch info (uses secondary DB when available)
      $routes->match(['GET', 'options'], "newBranchDetails/(:num)", "BranchController::getBranchDetails/$1", ['filter' => 'authFilter']);
 
+     // fetch getModalities
+     $routes->match(['GET', 'options'], "getModalities", "BranchController::getModalities", ['filter' => 'authFilter']);
+
      // Branding dashboard counts (aggregate metrics) used by front-end dashboards
      $routes->match(['POST', 'options'], "Branding_DashboardCount", "BrandingChecklistController::dashboardCount", ['filter' => 'authFilter']);
 
@@ -491,4 +573,93 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['GET', 'options'],  'newdform/list',   'NewDFormController::list',                ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'],  'newdform/show/(:segment)', 'NewDFormController::showSubmission/$1', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'newdform/update/(:segment)', 'NewDFormController::update/$1',       ['filter' => 'authFilter']);
+
+     $routes->match(['GET', 'options'], 'ac-vendors/', 'ACVendor::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-vendors/create', 'ACVendor::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-vendors/delete/(:segment)', 'ACVendor::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'ac-vendors/show/(:segment)', 'ACVendor::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-vendors/update/(:segment)', 'ACVendor::update/$1', ['filter' => 'authFilter']);
+
+
+     $routes->match(['GET', 'options'], 'branch-ac-vendor-mapping/', 'BranchACVendorMapping::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branch-ac-vendor-mapping/create', 'BranchACVendorMapping::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branch-ac-vendor-mapping/delete/(:segment)', 'BranchACVendorMapping::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'branch-ac-vendor-mapping/show/(:segment)', 'BranchACVendorMapping::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'branch-ac-vendor-mapping/update/(:segment)', 'BranchACVendorMapping::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'branch-ac-vendor-mapping/mapping_details/(:any)/(:any)', 'BranchACVendorMapping::mapping_details/$1/$2', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'getMappedDetailsByBranchId/(:any)', 'BranchACVendorMapping::getMappedDetailsByBranchId/$1', ['filter' => 'authFilter']);
+
+
+
+     $routes->match(['GET', 'options'], 'ac-services/', 'ACServiceController::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-services/create', 'ACServiceController::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-services/delete/(:segment)', 'ACServiceController::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'ac-services/show/(:segment)', 'ACServiceController::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-services/update/(:segment)', 'ACServiceController::update/$1', ['filter' => 'authFilter']);
+
+     // NewVendorsController
+     $routes->match(['GET', 'options'], 'new-vendors', 'NewVendorsController::list', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'new-vendors/', 'NewVendorsController::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'new-vendors/create', 'NewVendorsController::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'new-vendors/delete/(:segment)', 'NewVendorsController::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'new-vendors/show/(:segment)', 'NewVendorsController::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'new-vendors/update/(:segment)', 'NewVendorsController::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'new-vendors/checklist-forms', 'NewVendorsController::newChecklistForms', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'new-vendors/fetch-vendor-by-form/(:any)/(:any)', 'NewVendorsController::fetchVendorByForm/$1/$2', ['filter' => 'authFilter']);
+
+     // AC Services Forms
+     $routes->match(['POST', 'options'], 'ac-service-forms/create', 'ACServiceFormsController::create', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'ac-service-forms/', 'ACServiceFormsController::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-service-forms/delete/(:segment)', 'ACServiceFormsController::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'ac-service-forms/show/(:segment)', 'ACServiceFormsController::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'ac-service-forms/update/(:segment)', 'ACServiceFormsController::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'getCompletedServicesInSelectedYear/(:any)/(:any)/(:any)', 'ACServiceFormsController::getCompletedServicesInSelectedYear/$1/$2/$3', ['filter' => 'authFilter']);
+
+     // Biomedical Equipment Forms
+     $routes->match(['POST', 'options'], 'biomedical-equipment-forms/create', 'BiomedicalEquipment::create', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'biomedical-equipment-forms/', 'BiomedicalEquipment::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'biomedical-equipment-forms/delete/(:segment)', 'BiomedicalEquipment::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'biomedical-equipment-forms/show/(:segment)', 'BiomedicalEquipment::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'biomedical-equipment-forms/update/(:segment)', 'BiomedicalEquipment::update/$1', ['filter' => 'authFilter']);
+
+     // bmw 
+     $routes->match(['POST', 'options'], 'bmw/create', 'BMW::create', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'bmw/', 'BMW::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'bmw', 'BMW::list', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'bmw/delete/(:segment)', 'BMW::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'bmw/show/(:segment)', 'BMW::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'bmw/update/(:segment)', 'BMW::update/$1', ['filter' => 'authFilter']);
+
+     // Drinking Water controller
+     $routes->match(['GET', 'options'], 'drinking-water', 'DrinkingWaterController::list', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'drinking-water/', 'DrinkingWaterController::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'drinking-water/create', 'DrinkingWaterController::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'drinking-water/delete/(:segment)', 'DrinkingWaterController::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'drinking-water/show/(:segment)', 'DrinkingWaterController::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'drinking-water/update/(:segment)', 'DrinkingWaterController::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'drinking-water/get-total-can-details-of-vendor-of-branch/(:any)/(:any)', 'DrinkingWaterController::getTotalCanDetailsOfVendorOfBranch/$1/$2', ['filter' => 'authFilter']);
+
+     // water tank controller
+     $routes->match(['GET', 'options'], 'water-tank', 'WaterTankCleaning::list', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'water-tank/', 'WaterTankCleaning::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'water-tank/create', 'WaterTankCleaning::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'water-tank/delete/(:segment)', 'WaterTankCleaning::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'water-tank/show/(:segment)', 'WaterTankCleaning::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'water-tank/update/(:segment)', 'WaterTankCleaning::update/$1', ['filter' => 'authFilter']);
+
+     // facade cleaning controller 
+     $routes->match(['GET', 'options'], 'facade-cleaning', 'FacadeCleaning::list', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'facade-cleaning/', 'FacadeCleaning::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'facade-cleaning/create', 'FacadeCleaning::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'facade-cleaning/delete/(:segment)', 'FacadeCleaning::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'facade-cleaning/show/(:segment)', 'FacadeCleaning::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'facade-cleaning/update/(:segment)', 'FacadeCleaning::update/$1', ['filter' => 'authFilter']);
+
+     // pest control controller
+     $routes->match(['GET', 'options'], 'pest-control', 'PestControl::list', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'pest-control/', 'PestControl::list/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'pest-control/create', 'PestControl::create', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'pest-control/delete/(:segment)', 'PestControl::delete/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'],  'pest-control/show/(:segment)', 'PestControl::show/$1', ['filter' => 'authFilter']);
+     $routes->match(['POST', 'options'], 'pest-control/update/(:segment)', 'PestControl::update/$1', ['filter' => 'authFilter']);
 });

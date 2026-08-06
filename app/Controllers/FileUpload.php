@@ -734,8 +734,617 @@ class FileUpload extends BaseController
           ]);
      }
 
+     public function viewAcAttachment($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $filePath = ROOTPATH . 'uploads/ac_services/' . $fileName;
+
+          if (!file_exists($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $mime = mime_content_type($filePath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setBody(file_get_contents($filePath));
+     }
+
+     public function viewBioAttachment($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $filePath = ROOTPATH . 'uploads/biomedical_equipments/' . $fileName;
+
+          if (!file_exists($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $mime = mime_content_type($filePath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setBody(file_get_contents($filePath));
+     }
+
+     public function viewBioAttachmentNewThumb($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $uploadPath = ROOTPATH . 'uploads/biomedical_equipments/';
+          $filePath   = $uploadPath . $fileName;
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $thumbDir = $uploadPath . 'thumbs/';
+
+          if (!is_dir($thumbDir)) {
+               mkdir($thumbDir, 0777, true);
+          }
+
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+
+          if (!file_exists($thumbPath)) {
+
+               $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+               if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
+
+                    [$w, $h] = getimagesize($filePath);
+
+                    $thumbW = 50;
+                    $thumbH = 50;
+
+                    $src = ($ext === 'png')
+                         ? imagecreatefrompng($filePath)
+                         : imagecreatefromjpeg($filePath);
+
+                    $thumb = imagecreatetruecolor($thumbW, $thumbH);
+
+                    $bg = imagecolorallocate($thumb, 255, 255, 255);
+                    imagefill($thumb, 0, 0, $bg);
+
+                    $scale = min($thumbW / $w, $thumbH / $h);
+
+                    $newW = (int)($w * $scale);
+                    $newH = (int)($h * $scale);
+
+                    $dstX = (int)(($thumbW - $newW) / 2);
+                    $dstY = (int)(($thumbH - $newH) / 2);
+
+                    imagecopyresampled(
+                         $thumb,
+                         $src,
+                         $dstX,
+                         $dstY,
+                         0,
+                         0,
+                         $newW,
+                         $newH,
+                         $w,
+                         $h
+                    );
+
+                    imagepng($thumb, $thumbPath);
+
+                    imagedestroy($thumb);
+                    imagedestroy($src);
+               } elseif ($ext === 'pdf') {
+
+                    copy($filePath, $thumbPath);
+               }
+          }
+
+          $mime = mime_content_type($thumbPath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setBody(file_get_contents($thumbPath));
+     }
+
+     // bmw files
+     public function viewBmwAttachment($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $filePath = ROOTPATH . 'uploads/bmw/' . $fileName;
+
+          if (!file_exists($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $mime = mime_content_type($filePath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setBody(file_get_contents($filePath));
+     }
+
+     public function viewBmwAttachmentNewThumb($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $uploadPath = ROOTPATH . 'uploads/bmw/';
+          $filePath   = $uploadPath . $fileName;
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $thumbDir = $uploadPath . 'thumbs/';
+
+          if (!is_dir($thumbDir)) {
+               mkdir($thumbDir, 0777, true);
+          }
+
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+
+          if (!file_exists($thumbPath)) {
+
+               $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+               if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
+
+                    [$w, $h] = getimagesize($filePath);
+
+                    $thumbW = 50;
+                    $thumbH = 50;
+
+                    $src = ($ext === 'png')
+                         ? imagecreatefrompng($filePath)
+                         : imagecreatefromjpeg($filePath);
+
+                    $thumb = imagecreatetruecolor($thumbW, $thumbH);
+
+                    $bg = imagecolorallocate($thumb, 255, 255, 255);
+                    imagefill($thumb, 0, 0, $bg);
+
+                    $scale = min($thumbW / $w, $thumbH / $h);
+
+                    $newW = (int)($w * $scale);
+                    $newH = (int)($h * $scale);
+
+                    $dstX = (int)(($thumbW - $newW) / 2);
+                    $dstY = (int)(($thumbH - $newH) / 2);
+
+                    imagecopyresampled(
+                         $thumb,
+                         $src,
+                         $dstX,
+                         $dstY,
+                         0,
+                         0,
+                         $newW,
+                         $newH,
+                         $w,
+                         $h
+                    );
+
+                    imagepng($thumb, $thumbPath);
+
+                    imagedestroy($thumb);
+                    imagedestroy($src);
+               } elseif ($ext === 'pdf') {
+
+                    copy($filePath, $thumbPath);
+               }
+          }
+
+          $mime = mime_content_type($thumbPath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setBody(file_get_contents($thumbPath));
+     }
+
+     //viewDrinkingWaterAttachment
+     public function viewDrinkingWaterAttachment($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $filePath = ROOTPATH . 'uploads/drinking_water/' . $fileName;
+
+          if (!file_exists($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $mime = mime_content_type($filePath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setBody(file_get_contents($filePath));
+     }
+
+     public function viewDrinkingWaterAttachmentNewThumb($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $uploadPath = ROOTPATH . 'uploads/drinking_water/';
+          $filePath   = $uploadPath . $fileName;
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $thumbDir = $uploadPath . 'thumbs/';
+
+          if (!is_dir($thumbDir)) {
+               mkdir($thumbDir, 0777, true);
+          }
+
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+
+          if (!file_exists($thumbPath)) {
+
+               $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+               if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
+
+                    [$w, $h] = getimagesize($filePath);
+
+                    $thumbW = 50;
+                    $thumbH = 50;
+
+                    $src = ($ext === 'png')
+                         ? imagecreatefrompng($filePath)
+                         : imagecreatefromjpeg($filePath);
+
+                    $thumb = imagecreatetruecolor($thumbW, $thumbH);
+
+                    $bg = imagecolorallocate($thumb, 255, 255, 255);
+                    imagefill($thumb, 0, 0, $bg);
+
+                    $scale = min($thumbW / $w, $thumbH / $h);
+
+                    $newW = (int)($w * $scale);
+                    $newH = (int)($h * $scale);
+
+                    $dstX = (int)(($thumbW - $newW) / 2);
+                    $dstY = (int)(($thumbH - $newH) / 2);
+
+                    imagecopyresampled(
+                         $thumb,
+                         $src,
+                         $dstX,
+                         $dstY,
+                         0,
+                         0,
+                         $newW,
+                         $newH,
+                         $w,
+                         $h
+                    );
+
+                    imagepng($thumb, $thumbPath);
+
+                    imagedestroy($thumb);
+                    imagedestroy($src);
+               } elseif ($ext === 'pdf') {
+
+                    copy($filePath, $thumbPath);
+               }
+          }
+
+          $mime = mime_content_type($thumbPath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setBody(file_get_contents($thumbPath));
+     }
 
 
+
+     public function viewAcAttachmentNewThumb($fileName)
+     {
+          $fileName = basename($fileName);
+
+          $uploadPath = ROOTPATH . 'uploads/ac_services/';
+          $filePath   = $uploadPath . $fileName;
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => false,
+                    'message' => 'File not found'
+               ]);
+          }
+
+          $thumbDir = $uploadPath . 'thumbs/';
+
+          if (!is_dir($thumbDir)) {
+               mkdir($thumbDir, 0777, true);
+          }
+
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+
+          if (!file_exists($thumbPath)) {
+
+               $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+               if (in_array($ext, ['jpg', 'jpeg', 'png'])) {
+
+                    [$w, $h] = getimagesize($filePath);
+
+                    $thumbW = 50;
+                    $thumbH = 50;
+
+                    $src = ($ext === 'png')
+                         ? imagecreatefrompng($filePath)
+                         : imagecreatefromjpeg($filePath);
+
+                    $thumb = imagecreatetruecolor($thumbW, $thumbH);
+
+                    $bg = imagecolorallocate($thumb, 255, 255, 255);
+                    imagefill($thumb, 0, 0, $bg);
+
+                    $scale = min($thumbW / $w, $thumbH / $h);
+
+                    $newW = (int)($w * $scale);
+                    $newH = (int)($h * $scale);
+
+                    $dstX = (int)(($thumbW - $newW) / 2);
+                    $dstY = (int)(($thumbH - $newH) / 2);
+
+                    imagecopyresampled(
+                         $thumb,
+                         $src,
+                         $dstX,
+                         $dstY,
+                         0,
+                         0,
+                         $newW,
+                         $newH,
+                         $w,
+                         $h
+                    );
+
+                    imagepng($thumb, $thumbPath);
+
+                    imagedestroy($thumb);
+                    imagedestroy($src);
+               } elseif ($ext === 'pdf') {
+
+                    $thumb = imagecreatetruecolor(50, 50);
+
+                    $bg      = imagecolorallocate($thumb, 240, 240, 240);
+                    $textCol = imagecolorallocate($thumb, 80, 80, 80);
+
+                    imagefilledrectangle($thumb, 0, 0, 49, 49, $bg);
+
+                    imagestring($thumb, 5, 10, 18, 'PDF', $textCol);
+
+                    imagepng($thumb, $thumbPath);
+
+                    imagedestroy($thumb);
+               } else {
+
+                    $thumb = imagecreatetruecolor(50, 50);
+
+                    $bg = imagecolorallocate($thumb, 230, 230, 230);
+
+                    imagefilledrectangle($thumb, 0, 0, 49, 49, $bg);
+
+                    imagepng($thumb, $thumbPath);
+
+                    imagedestroy($thumb);
+               }
+          }
+
+          return $this->response
+               ->setHeader('Content-Type', 'image/png')
+               ->setHeader('Cache-Control', 'public, max-age=86400')
+               ->setBody(file_get_contents($thumbPath));
+     }
+
+     // viewWaterTankCleaningAttachment 
+     public function viewWaterTankCleaningAttachment($fileName)
+     {
+          $fileName = basename($fileName);
+
+          // Same location used during upload
+          $uploadPath = FCPATH . 'uploads/WaterTankCleaning/';
+          $filePath   = $uploadPath . $fileName;
+
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+
+               return $this->response
+                    ->setStatusCode(404)
+                    ->setJSON([
+                         'status' => false,
+                         'message' => 'File not found'
+                    ]);
+          }
+
+
+          $mime = mime_content_type($filePath);
+
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setHeader(
+                    'Content-Disposition',
+                    'inline; filename="' . $fileName . '"'
+               )
+               ->setBody(
+                    file_get_contents($filePath)
+               );
+     }
+
+     public function viewWaterTankCleaningAttachmentNewThumb($fileName)
+     {
+          $fileName = basename(htmlspecialchars($fileName));
+          $uploadPath = WRITEPATH . 'uploads/water_tank_cleaning/';
+          $filePath = $uploadPath . $fileName;
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => 'error',
+                    'message' => 'File not found or not accessible'
+               ]);
+          }
+          $thumbDir = $uploadPath . 'thumbs/';
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+          if (!file_exists($thumbPath)) {
+               $this->createThumb($filePath, $thumbPath);
+          }
+          return $this->response
+               ->setHeader('Content-Type', 'image/png')
+               ->setHeader('Cache-Control', 'public, max-age=86400')
+               ->setBody(file_get_contents($thumbPath));
+     }
+
+     // viewFacadeAttachment 
+     public function viewFacadeAttachment($fileName)
+     {
+          $fileName = basename($fileName);
+
+          // Same location used during upload
+          $uploadPath = FCPATH . 'uploads/facade_cleaning/';
+          $filePath   = $uploadPath . $fileName;
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+
+               return $this->response
+                    ->setStatusCode(404)
+                    ->setJSON([
+                         'status' => false,
+                         'message' => 'File not found'
+                    ]);
+          }
+
+          $mime = mime_content_type($filePath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setHeader(
+                    'Content-Disposition',
+                    'inline; filename="' . $fileName . '"'
+               )
+               ->setBody(
+                    file_get_contents($filePath)
+               );
+     }
+
+     public function viewFacadeAttachmentNewThumb($fileName)
+     {
+          $fileName = basename(htmlspecialchars($fileName));
+          $uploadPath = WRITEPATH . 'uploads/facade_cleaning/';
+          $filePath = $uploadPath . $fileName;
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => 'error',
+                    'message' => 'File not found or not accessible'
+               ]);
+          }
+          $thumbDir = $uploadPath . 'thumbs/';
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+          if (!file_exists($thumbPath)) {
+               $this->createThumb($filePath, $thumbPath);
+          }
+          return $this->response
+               ->setHeader('Content-Type', 'image/png')
+               ->setHeader('Cache-Control', 'public, max-age=86400')
+               ->setBody(file_get_contents($thumbPath));
+     }
+
+     // viewPestControlAttachment
+     public function viewPestControlAttachment($fileName)
+     {
+          $fileName = basename($fileName);
+
+          // Same location used during upload
+          $uploadPath = FCPATH . 'uploads/pest_control/';
+          $filePath   = $uploadPath . $fileName;
+
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+
+               return $this->response
+                    ->setStatusCode(404)
+                    ->setJSON([
+                         'status' => false,
+                         'message' => 'File not found'
+                    ]);
+          }
+
+          $mime = mime_content_type($filePath);
+
+          return $this->response
+               ->setHeader('Content-Type', $mime)
+               ->setHeader(
+                    'Content-Disposition',
+                    'inline; filename="' . $fileName . '"'
+               )
+               ->setBody(
+                    file_get_contents($filePath)
+               );
+     }
+
+     public function viewPestControlAttachmentNewThumb($fileName)
+     {
+          $fileName = basename(htmlspecialchars($fileName));
+          $uploadPath = WRITEPATH . 'uploads/pest_control/';
+          $filePath = $uploadPath . $fileName;
+          if (!file_exists($filePath) || !is_readable($filePath)) {
+               return $this->response->setStatusCode(404)->setJSON([
+                    'status' => 'error',
+                    'message' => 'File not found or not accessible'
+               ]);
+          }
+          $thumbDir = $uploadPath . 'thumbs/';
+          $thumbName = 'thumb_50_50_' . $fileName;
+          $thumbPath = $thumbDir . $thumbName;
+          if (!file_exists($thumbPath)) {
+               $this->createThumb($filePath, $thumbPath);
+          }
+          return $this->response
+               ->setHeader('Content-Type', 'image/png')
+               ->setHeader('Cache-Control', 'public, max-age=86400')
+               ->setBody(file_get_contents($thumbPath));
+     }
+
+
+     public function createThumb($filePath, $thumbPath)
+     {
+          $image = imagecreatefromjpeg($filePath);
+          $width = imagesx($image);
+          $height = imagesy($image);
+          $newWidth = 50;
+          $newHeight = 50;
+          $thumb = imagecreatetruecolor($newWidth, $newHeight);
+          imagecopyresampled($thumb, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+          imagejpeg($thumb, $thumbPath);
+          imagedestroy($image);
+          imagedestroy($thumb);
+     }
 
      private function validateAuthorization()
      {

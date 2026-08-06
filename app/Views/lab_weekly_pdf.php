@@ -438,7 +438,7 @@
                     'Visit Time' => $lab['visit_time'] ?? '',
                     'Visited By' => $visitedBy,
                     'Branch Manager' => $lab['branch_manager'] ?? '',
-                    'Cluster Manager' => $lab['cluster_manager'] ?? '',
+                    // 'Cluster Manager' => $lab['cluster_manager'] ?? '',
                     'Contact' => $lab['mobile_no'] ?? $lab['contact'] ?? '',
                     'Notes' => $lab['notes'] ?? '',
                ];
@@ -567,4 +567,3 @@
      </body>
 
 </html>
-
