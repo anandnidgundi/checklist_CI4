@@ -36,10 +36,6 @@ class ACServicesFormsModel extends Model
           'audited_date',
 
           'remarks',
-
-          'date_of_visit',
-          'visit_time',
-
           'was_cleaning_done_bm',
      ];
 

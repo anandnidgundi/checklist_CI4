@@ -305,6 +305,10 @@ class PdfService
           set_time_limit(0);
 
           $db = \Config\Database::connect();
+
+          /*
+          * Get BMW service record
+          */
           $service = $db->table('bmw')
                ->where('id', $id)
                ->get()
@@ -314,45 +318,109 @@ class PdfService
                throw new \RuntimeException("Record not found");
           }
 
+          /*
+               * Get branch ID from current BMW record
+               */
+          $branchId = $service['branch_id'] ?? null;
+
+          /*
+               * Calculate total BMW visits done for this branch
+               *
+               * Same logic as:
+               *
+               * public function total_visits_done($branch_id)
+               * {
+               *     $totalVisits = $this->bmwModel
+               *         ->where('branch_id', $branch_id)
+               *         ->countAllResults();
+               *
+               *     return $this->respond([
+               *         'status' => true,
+               *         'branch_id' => $branch_id,
+               *         'total_visits_done' => $totalVisits
+               *     ]);
+               * }
+               */
+          $totalVisits = 0;
+
+          if (!empty($branchId)) {
+               $totalVisits = $db->table('bmw')
+                    ->where('branch_id', $branchId)
+                    ->countAllResults();
+          }
+
+          /*
+          * Add total visits to BMW data
+          */
+          $service['total_visits_done'] = $totalVisits;
+
+          /*
+          * Upload path
+          */
           $uploadPath = FCPATH . 'uploads/bmw/';
 
+          /*
+          * Get BMW attachments
+          */
           $files = $db->table('files')
                ->where('bmw_form_id', $id)
                ->where('service_id', 'BMW')
                ->get()
                ->getResultArray();
 
+          /*
+          * Convert attachments to Base64
+          * so Dompdf can display them.
+          */
           foreach ($files as &$file) {
 
                $file['pdf_src'] = null;
 
                $fileName = trim($file['file_name'] ?? '');
-               if (!$fileName) continue;
+
+               if (!$fileName) {
+                    continue;
+               }
 
                $filePath = $uploadPath . $fileName;
 
-               if (!is_file($filePath)) continue;
+               if (!is_file($filePath)) {
+                    continue;
+               }
 
-               $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+               $ext = strtolower(
+                    pathinfo($filePath, PATHINFO_EXTENSION)
+               );
 
                $mime = match ($ext) {
                     'jpg', 'jpeg' => 'image/jpeg',
-                    'png' => 'image/png',
-                    'pdf' => 'application/pdf',
-                    default => 'application/octet-stream',
+                    'png'         => 'image/png',
+                    'pdf'         => 'application/pdf',
+                    default       => 'application/octet-stream',
                };
 
                $content = file_get_contents($filePath);
-               if (!$content) continue;
 
-               $file['pdf_src'] = 'data:' . $mime . ';base64,' . base64_encode($content);
+               if ($content === false) {
+                    continue;
+               }
+
+               $file['pdf_src'] =
+                    'data:' . $mime . ';base64,' . base64_encode($content);
           }
 
           unset($file);
 
+          /*
+          * Add files to BMW data
+          */
           $service['files'] = $files;
 
+          /*
+          * Dompdf options
+          */
           $options = new \Dompdf\Options();
+
           $options->set('isRemoteEnabled', false);
           $options->set('isHtml5ParserEnabled', true);
           $options->set('isPhpEnabled', false);
@@ -360,13 +428,22 @@ class PdfService
 
           $dompdf = new \Dompdf\Dompdf($options);
 
+          /*
+          * Load PDF view
+          */
           $html = view('bmw_pdf', [
                'bmw' => $service
-          ], ['debug' => false]);
+          ], [
+               'debug' => false
+          ]);
 
+          /*
+          * Generate PDF
+          */
           $dompdf->loadHtml($html);
           $dompdf->setPaper('A4', 'portrait');
           $dompdf->render();
+
           return $dompdf->output();
      }
 

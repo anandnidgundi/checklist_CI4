@@ -1030,14 +1030,43 @@ class DeptModel extends Model
      }
 
 
+     // public function updateCluster($id, $data)
+     // {
+     //      return $this->db->table('clusters')  // Correct table name
+     //           ->set($data)
+     //           ->where('cluster_id', $id) // Make sure 'branch' is a valid column in 'bi_centres'
+     //           ->update();
+     // }
+
      public function updateCluster($id, $data)
      {
-          //    return $this->db->table( 'clusters' )
+          $this->db->transStart();
 
-          return $this->db->table('clusters')  // Correct table name
+          // 1. Update cluster table
+          $this->db->table('clusters')
                ->set($data)
-               ->where('cluster_id', $id) // Make sure 'branch' is a valid column in 'bi_centres'
+               ->where('cluster_id', $id)
                ->update();
+
+          // 2. Find the zone which contains this cluster ID
+          $zone = $this->db->table('zones')
+               ->where("FIND_IN_SET(" . (int)$id . ", clusters) >", 0, false)
+               ->get()
+               ->getRow();
+
+          // 3. Update branches in the corresponding zone
+          if ($zone) {
+               $this->db->table('zones')
+                    ->set([
+                         'branches' => $data['branches'] ?? ''
+                    ])
+                    ->where('z_id', $zone->z_id)
+                    ->update();
+          }
+
+          $this->db->transComplete();
+
+          return $this->db->transStatus();
      }
 
      public function deleteClusterById($id)

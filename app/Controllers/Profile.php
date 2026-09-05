@@ -62,4 +62,27 @@ class Profile extends BaseController
           $profileModel = new ProfileModel();
           return $profileModel->where('emp_code', $bmid)->first();
      }
+
+     public function getUserDetails($bmid)
+     {
+          $profileModel = new ProfileModel();
+          $user = $profileModel->where('emp_code', $bmid)->first();
+
+          if (!$user) {
+               return $this->respond(['error' => 'User not found'], 404);
+          }
+
+          // Convert to array if needed
+          $data = [
+               'id' => $user['id'],
+               'emp_code' => $user['emp_code'],
+               'emp_name' => $user['fname'] . ' ' . $user['lname'],
+               'email' => $user['mail_id'],
+               'mobile' => $user['mobile'],
+               'active' => $user['active'],
+               'validity' => $user['validity'],
+          ];
+
+          return $this->respond(['data' => $data, 'status' => true], 200);
+     }
 }

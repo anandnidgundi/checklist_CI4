@@ -20,8 +20,7 @@ class BiomedicalEquipmentModel extends Model
           'branch_manager_emp_code',
           'branch_manager_mobile',
           'branch_manager_email',
-          'modality',
-          'modality_id',
+          'biomedical_equipment',
           'date_of_visit',
           'visit_time',
           'scheduled_pms_date',
@@ -47,7 +46,6 @@ class BiomedicalEquipmentModel extends Model
           'branch_id'                        => 'required|max_length[10]',
           'date_of_visit'                    => 'required|valid_date',
           'visit_time'                       => 'required',
-          'scheduled_pms_date'               => 'required|valid_date',
           'audited_by_name'                  => 'required|max_length[200]',
           'audited_by_emp_code'              => 'required|max_length[20]',
      ];

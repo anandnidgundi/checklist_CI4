@@ -468,6 +468,10 @@
                <h3 class="section-title">Service Details</h3>
 
                <table class="item-table">
+                    <tr>
+                         <td> Biomedical Equipment Name</td>
+                         <td><?= esc($formatDate($biomedical_equipment['biomedical_equipment'] ?? '')) ?></td>
+                    </tr>
 
                     <tr>
                          <td>Scheduled PMS Date (as per service agreement)</td>
@@ -493,7 +497,12 @@
                          </td>
                     </tr>
 
-
+                    <tr>
+                         <td>Next PMS Date</td>
+                         <td>
+                              <?= esc($biomedical_equipment['next_scheduled_pms_date'] ?? '') ?>
+                         </td>
+                    </tr>
 
                </table>
 

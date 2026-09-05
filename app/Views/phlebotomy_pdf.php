@@ -548,9 +548,24 @@
                                    $isCritical = $isCriticalValue($criticalRaw) || $isCriticalValue($criticalDisplay);
                                    ?>
                                    <tr>
-                                        <td style="width:60%;"><?= esc($displayLabel) ?>:</td>
+                                        <!-- <td style="width:60%;"><?= esc($displayLabel) ?>:</td>
                                         <td><strong
                                                   class="<?= $isCritical ? 'critical-status' : '' ?>"><?= nl2br(esc($displayValue)) ?></strong>
+                                        </td> -->
+                                        <td style="width:50% !important;"><?= esc($displayLabel) ?>:</td>
+                                        <?php
+                                        $value = $displayValue;
+
+                                        if (str_contains($value, ',')) {
+                                             $files = array_filter(array_map('trim', explode(',', $value)));
+                                             $value = implode('<br>', array_map('esc', $files));
+                                        } else {
+                                             $value = esc($value);
+                                        }
+                                        ?>
+
+                                        <td style="width:50%; word-break:break-word; overflow-wrap:break-word;">
+                                             <strong><?= $value ?></strong>
                                         </td>
                                    </tr>
                               <?php endforeach; ?>

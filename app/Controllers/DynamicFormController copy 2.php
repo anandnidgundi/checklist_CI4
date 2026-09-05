@@ -1,0 +1,3093 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Controllers\BaseController;
+use App\Models\FormRecordsModel;
+use App\Models\FormSubmissionsModel;
+use App\Models\BrandingChecklistModel;
+use App\Models\BranchModel;
+use App\Models\LogsModel;
+use CodeIgniter\API\ResponseTrait;
+use CodeIgniter\HTTP\ResponseInterface;
+
+class DynamicFormController extends BaseController
+{
+     use ResponseTrait;
+
+     protected $formRecordsModel;
+     protected $formSubmissionsModel;
+
+     public function __construct()
+     {
+          $this->formRecordsModel = model(FormRecordsModel::class);
+          $this->formSubmissionsModel = model(FormSubmissionsModel::class);
+     }
+
+     private function uuidV4(): string
+     {
+          $data = random_bytes(16);
+          $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
+          $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
+
+          $hex = bin2hex($data);
+          return sprintf(
+               '%s-%s-%s-%s-%s',
+               substr($hex, 0, 8),
+               substr($hex, 8, 4),
+               substr($hex, 12, 4),
+               substr($hex, 16, 4),
+               substr($hex, 20, 12)
+          );
+     }
+
+     private function readPayload(): array
+     {
+          $payload = $this->request->getJSON(true);
+          if (!is_array($payload)) {
+               $payload = $this->request->getPost();
+          }
+          if (!is_array($payload)) {
+               $payload = [];
+          }
+          return $payload;
+     }
+
+     private function tableHasColumn(string $table, string $column): bool
+     {
+          try {
+               $db = \Config\Database::connect();
+               $cols = $db->getFieldNames($table);
+               return in_array($column, $cols, true);
+          } catch (\Throwable $e) {
+               return false;
+          }
+     }
+
+     private function toStringValue($value): string
+     {
+          if ($value === null || $value === false) {
+               return '';
+          }
+
+          if (is_array($value) || is_object($value)) {
+               return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+          }
+          return (string) $value;
+     }
+
+     /**
+      * If header contains a branch_id, fetch canonical branch details and
+      * populate/overwrite common header keys so stored header is authoritative.
+      */
+     private function normalizeHeaderWithBranch($header)
+     {
+          if (!is_array($header)) return $header;
+          $branchId = isset($header['branch_id']) ? trim((string)$header['branch_id']) : '';
+          if ($branchId === '') return $header;
+
+          try {
+               $bm = new BranchModel();
+               $b = $bm->getBranchDetails($branchId);
+               if (is_array($b) && !empty($b)) {
+                    if (!empty($b['branch_name'])) $header['centre_name'] = $b['branch_name'];
+                    if (!empty($b['branch_manager_name'])) {
+                         $bmMobile = !empty($b['branch_manager_mobile']) ? trim((string)$b['branch_manager_mobile']) : '';
+                         $header['branch_manager'] = $bmMobile ? trim($b['branch_manager_name']) . ' (' . $bmMobile . ')' : trim($b['branch_manager_name']);
+                         if ($bmMobile) $header['contact'] = $bmMobile;
+                    }
+                    if (!empty($b['cluster_manager_name'])) {
+                         $cmMobile = !empty($b['cluster_manager_mobile']) ? trim((string)$b['cluster_manager_mobile']) : '';
+                         $header['cluster_manager'] = $cmMobile ? trim($b['cluster_manager_name']) . ' (' . $cmMobile . ')' : trim($b['cluster_manager_name']);
+                    }
+                    if (!empty($b['branch_manager_email'])) $header['branch_manager_email'] = trim($b['branch_manager_email']);
+                    if (!empty($b['branch_email'])) $header['branch_email'] = trim($b['branch_email']);
+                    if (!empty($b['mobile_no']) && empty($header['contact'])) $header['contact'] = trim($b['mobile_no']);
+                    if (!empty($b['address']) && empty($header['location'])) $header['location'] = trim($b['address']);
+                    if (!empty($b['branch_type']) && empty($header['branch_type'])) $header['branch_type'] = $b['branch_type'];
+               }
+          } catch (\Throwable $__e) {
+               // non-fatal: leave header as-is
+               log_message('debug', 'normalizeHeaderWithBranch failed: ' . $__e->getMessage());
+          }
+
+          return $header;
+     }
+
+     private function resolveAuthEmpCode($user): string
+     {
+          if (!is_object($user)) {
+               return '';
+          }
+
+          $candidates = [
+               $user->emp_code ?? null,
+               $user->sub ?? null,
+               $user->username ?? null,
+          ];
+
+          foreach ($candidates as $candidate) {
+               $value = is_scalar($candidate) ? trim((string) $candidate) : '';
+               if ($value !== '') {
+                    return $value;
+               }
+          }
+
+          return '';
+     }
+
+     private function resolveAuthRole($user): string
+     {
+          if (!is_object($user)) {
+               return '';
+          }
+
+          $role = is_scalar($user->role ?? null) ? trim((string) $user->role) : '';
+          return $role === '' ? '' : strtoupper($role);
+     }
+
+     private function canEditSubmission(array $submission, $user): bool
+     {
+          $role = $this->resolveAuthRole($user);
+          $empCode = $this->resolveAuthEmpCode($user);
+          $createdBy = trim((string) ($submission['created_by'] ?? ''));
+
+          if ($empCode !== '' && $createdBy !== '' && $createdBy === $empCode) {
+               return true;
+          }
+
+          return in_array($role, ['SUPER_ADMIN', 'ADMIN', 'AGM_BRANDING'], true);
+     }
+
+     private function usesSubmissionTable(): bool
+     {
+          // New schema mode ONLY when all of these are true:
+          // - parent table exists
+          // - form_records has numeric submission_id
+          // - form_records also has submission_uuid (so we can still store the UUID)
+          return $this->tableHasColumn('form_submissions', 'id')
+               && $this->tableHasColumn('form_records', 'submission_id')
+               && $this->tableHasColumn('form_records', 'submission_uuid');
+     }
+
+     // Backwards-compatible endpoint
+     public function save()
+     {
+          return $this->create();
+     }
+
+     // DataTable / listing (server-side)
+     public function list()
+     {
+          $this->validateAuthorizationNew();
+          $request = $this->request;
+          $start = (int) $request->getGet('start') ?: 0;
+          $length = (int) $request->getGet('length') ?: 25;
+          $search = $request->getGet('search')['value'] ?? '';
+          $formId = (int) ($request->getGet('form_id') ?? 0);
+
+          $orderCol = $request->getGet('order')[0]['column'] ?? null;
+          $orderDir = $request->getGet('order')[0]['dir'] ?? 'desc';
+          $columns = $request->getGet('columns') ?? [];
+
+          // Optional: include detailed `form_records` for each submission when explicitly requested
+          $includeRecordsParam = $request->getGet('include_records') ?? $request->getGet('includeRecords') ?? null;
+          $includeRecords = false;
+          if ($includeRecordsParam !== null) {
+               $val = strtolower(trim((string)$includeRecordsParam));
+               $includeRecords = ($val === '1' || $val === 'true' || $val === 'yes');
+          }
+
+          try {
+               if ($this->usesSubmissionTable()) {
+                    $result = $this->formSubmissionsModel->datatableListFiltered($start, $length, (string) $search, $orderCol, (string) $orderDir, (array) $columns, $formId > 0 ? $formId : null);
+
+                    // Attach `form_records` only when explicitly requested (reduces payload)
+                    if (!empty($includeRecords)) {
+                         $rows = $result['rows'] ?? [];
+                         $submissionIds = [];
+                         foreach ($rows as $r) {
+                              if (isset($r['id']) && ctype_digit((string)$r['id'])) $submissionIds[] = (int)$r['id'];
+                         }
+
+                         if (!empty($submissionIds)) {
+                              $db = \Config\Database::connect();
+                              try {
+                                   $recs = $db->table('form_records')
+                                        ->whereIn('submission_id', $submissionIds)
+                                        ->orderBy('id', 'asc')
+                                        ->get()
+                                        ->getResultArray();
+
+                                   // Enrich records with input metadata (input_name, input_label)
+                                   $inputIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['input_id']) ? (int)$r['input_id'] : 0;
+                                   }, $recs))));
+                                   $metaByInputId = [];
+                                   if (!empty($inputIds)) {
+                                        try {
+                                             $inputs = $db->table('form_inputs')->select('id,input_name,input_label')->whereIn('id', $inputIds)->get()->getResultArray();
+                                             foreach ($inputs as $i) {
+                                                  $metaByInputId[(int)$i['id']] = $i;
+                                             }
+                                        } catch (\Throwable $__m) {
+                                             // non-fatal: continue without labels
+                                        }
+                                   }
+
+                                   // Enrich with section/sub-section names for readability
+                                   $sectionIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['section_id']) ? (int)$r['section_id'] : 0;
+                                   }, $recs))));
+                                   $subSectionIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['sub_section_id']) ? (int)$r['sub_section_id'] : 0;
+                                   }, $recs))));
+
+                                   $sectionMap = [];
+                                   if (!empty($sectionIds)) {
+                                        try {
+                                             $secs = $db->table('form_sections')->select('section_id,section_name')->whereIn('section_id', $sectionIds)->get()->getResultArray();
+                                             foreach ($secs as $s) $sectionMap[(int)$s['section_id']] = $s['section_name'] ?? null;
+                                        } catch (\Throwable $__s) { /* non-fatal */
+                                        }
+                                   }
+
+                                   $subSectionMap = [];
+                                   if (!empty($subSectionIds)) {
+                                        try {
+                                             $subs = $db->table('form_sub_sections')->select('sub_section_id,sub_section_name')->whereIn('sub_section_id', $subSectionIds)->get()->getResultArray();
+                                             foreach ($subs as $ss) $subSectionMap[(int)$ss['sub_section_id']] = $ss['sub_section_name'] ?? null;
+                                        } catch (\Throwable $__ss) { /* non-fatal */
+                                        }
+                                   }
+
+                                   $grouped = [];
+                                   foreach ($recs as $rec) {
+                                        $sid = (int) ($rec['submission_id'] ?? 0);
+                                        if ($sid <= 0) continue;
+
+                                        $iid = isset($rec['input_id']) ? (int)$rec['input_id'] : 0;
+                                        if ($iid && isset($metaByInputId[$iid])) {
+                                             $rec['input_name'] = $metaByInputId[$iid]['input_name'] ?? null;
+                                             $rec['input_label'] = $metaByInputId[$iid]['input_label'] ?? null;
+                                        } else {
+                                             $rec['input_name'] = $rec['input_name'] ?? null;
+                                             $rec['input_label'] = $rec['input_label'] ?? null;
+                                        }
+
+                                        $secId = isset($rec['section_id']) ? (int)$rec['section_id'] : 0;
+                                        $subId = isset($rec['sub_section_id']) ? (int)$rec['sub_section_id'] : 0;
+                                        $rec['section_name'] = $secId && isset($sectionMap[$secId]) ? $sectionMap[$secId] : null;
+                                        $rec['sub_section_name'] = $subId && isset($subSectionMap[$subId]) ? $subSectionMap[$subId] : null;
+
+                                        if (!isset($grouped[$sid])) $grouped[$sid] = [];
+                                        $grouped[$sid][] = $rec;
+                                   }
+
+                                   foreach ($rows as &$row) {
+                                        $sid = isset($row['id']) ? (int)$row['id'] : 0;
+                                        $row['records'] = $grouped[$sid] ?? [];
+                                   }
+                                   unset($row);
+                                   $result['rows'] = $rows;
+                              } catch (\Throwable $e) {
+                                   // keep response shape even on error and log for debugging
+                                   foreach ($rows as &$row) {
+                                        $row['records'] = [];
+                                   }
+                                   unset($row);
+                                   $result['rows'] = $rows;
+                                   log_message('error', 'DynamicForm::list failed to attach form_records: ' . $e->getMessage());
+                              }
+                         } else {
+                              // ensure key exists for consistency
+                              foreach (($result['rows'] ?? []) as &$row) {
+                                   $row['records'] = [];
+                              }
+                              unset($row);
+                         }
+                    }
+
+
+                    return $this->respond([
+                         'draw' => (int) $request->getGet('draw'),
+                         'recordsTotal' => $result['total'],
+                         'recordsFiltered' => $result['filtered'],
+                         'data' => $result['rows'],
+                    ], 200);
+               }
+
+               // Legacy fallback: group by submission_uuid/submission_id from form_records
+               $db = \Config\Database::connect();
+               $qb = $db->table('form_records as r');
+
+               $hasUuid = $this->tableHasColumn('form_records', 'submission_uuid');
+               $groupKey = $hasUuid ? 'r.submission_uuid' : 'r.submission_id';
+
+               if ($formId > 0) {
+                    $qb->where('r.form_id', $formId);
+               }
+
+               if (trim((string) $search) !== '') {
+                    $s = trim((string) $search);
+                    $qb->groupStart()
+                         ->like($groupKey, $s)
+                         ->orLike('r.created_by', $s)
+                         ->orLike('r.form_id', $s)
+                         ->orLike('r.dept_id', $s)
+                         ->groupEnd();
+               }
+
+               // total submissions count (approx)
+               $totalQb = $db->table('form_records as rr')->select($groupKey)->groupBy($groupKey);
+               if ($formId > 0) {
+                    $totalQb->where('rr.form_id', $formId);
+               }
+               $total = (int) $totalQb->countAllResults();
+
+               // filtered count
+               $qb->select($groupKey . ' as submission_key, MAX(r.created_dtm) as created_dtm, MAX(r.created_by) as created_by, MAX(r.form_id) as form_id, MAX(r.dept_id) as dept_id')
+                    ->groupBy($groupKey);
+               $filtered = (int) $qb->countAllResults(false);
+
+               $qb->orderBy('created_dtm', 'desc');
+               if ($length > 0) {
+                    $qb->limit($length, max(0, $start));
+               }
+               $rows = $qb->get()->getResultArray();
+
+               // If requested, attach full record rows for each legacy submission_key
+               if (!empty($includeRecords) && !empty($rows)) {
+                    try {
+                         $submissionKeys = array_values(array_unique(array_map(function ($r) {
+                              return (string) ($r['submission_key'] ?? '');
+                         }, $rows)));
+                         if (!empty($submissionKeys)) {
+                              $grouped = [];
+                              if ($hasUuid) {
+                                   $recs = $db->table('form_records')->whereIn('submission_uuid', $submissionKeys)->orderBy('id', 'asc')->get()->getResultArray();
+                                   // enrich input metadata
+                                   $inputIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['input_id']) ? (int)$r['input_id'] : 0;
+                                   }, $recs))));
+                                   $metaByInputId = [];
+                                   if (!empty($inputIds)) {
+                                        try {
+                                             $inputs = $db->table('form_inputs')->select('id,input_name,input_label')->whereIn('id', $inputIds)->get()->getResultArray();
+                                             foreach ($inputs as $i) $metaByInputId[(int)$i['id']] = $i;
+                                        } catch (\Throwable $__m) { /* ignore */
+                                        }
+                                   }
+                                   // build section/sub-section name maps
+                                   $sectionIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['section_id']) ? (int)$r['section_id'] : 0;
+                                   }, $recs))));
+                                   $subSectionIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['sub_section_id']) ? (int)$r['sub_section_id'] : 0;
+                                   }, $recs))));
+                                   $sectionMap = [];
+                                   $subSectionMap = [];
+                                   if (!empty($sectionIds)) {
+                                        try {
+                                             $secs = $db->table('form_sections')->select('section_id,section_name')->whereIn('section_id', $sectionIds)->get()->getResultArray();
+                                             foreach ($secs as $s) $sectionMap[(int)$s['section_id']] = $s['section_name'] ?? null;
+                                        } catch (\Throwable $__s) { /* ignore */
+                                        }
+                                   }
+                                   if (!empty($subSectionIds)) {
+                                        try {
+                                             $subs = $db->table('form_sub_sections')->select('sub_section_id,sub_section_name')->whereIn('sub_section_id', $subSectionIds)->get()->getResultArray();
+                                             foreach ($subs as $ss) $subSectionMap[(int)$ss['sub_section_id']] = $ss['sub_section_name'] ?? null;
+                                        } catch (\Throwable $__ss) { /* ignore */
+                                        }
+                                   }
+
+                                   foreach ($recs as $rec) {
+                                        $k = (string) ($rec['submission_uuid'] ?? '');
+                                        if ($k === '') continue;
+
+                                        $iid = isset($rec['input_id']) ? (int)$rec['input_id'] : 0;
+                                        if ($iid && isset($metaByInputId[$iid])) {
+                                             $rec['input_name'] = $metaByInputId[$iid]['input_name'] ?? null;
+                                             $rec['input_label'] = $metaByInputId[$iid]['input_label'] ?? null;
+                                        } else {
+                                             $rec['input_name'] = $rec['input_name'] ?? null;
+                                             $rec['input_label'] = $rec['input_label'] ?? null;
+                                        }
+
+                                        $secId = isset($rec['section_id']) ? (int)$rec['section_id'] : 0;
+                                        $subId = isset($rec['sub_section_id']) ? (int)$rec['sub_section_id'] : 0;
+                                        $rec['section_name'] = $secId && isset($sectionMap[$secId]) ? $sectionMap[$secId] : null;
+                                        $rec['sub_section_name'] = $subId && isset($subSectionMap[$subId]) ? $subSectionMap[$subId] : null;
+
+                                        if (!isset($grouped[$k])) $grouped[$k] = [];
+                                        $grouped[$k][] = $rec;
+                                   }
+                              } else {
+                                   // submission_id is numeric in legacy grouping
+                                   $ids = array_map('intval', $submissionKeys);
+                                   $recs = $db->table('form_records')->whereIn('submission_id', $ids)->orderBy('id', 'asc')->get()->getResultArray();
+
+                                   // enrich input metadata
+                                   $inputIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['input_id']) ? (int)$r['input_id'] : 0;
+                                   }, $recs))));
+                                   $metaByInputId = [];
+                                   if (!empty($inputIds)) {
+                                        try {
+                                             $inputs = $db->table('form_inputs')->select('id,input_name,input_label')->whereIn('id', $inputIds)->get()->getResultArray();
+                                             foreach ($inputs as $i) $metaByInputId[(int)$i['id']] = $i;
+                                        } catch (\Throwable $__m) { /* ignore */
+                                        }
+                                   }
+
+                                   // build section/sub-section name maps
+                                   $sectionIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['section_id']) ? (int)$r['section_id'] : 0;
+                                   }, $recs))));
+                                   $subSectionIds = array_values(array_unique(array_filter(array_map(function ($r) {
+                                        return isset($r['sub_section_id']) ? (int)$r['sub_section_id'] : 0;
+                                   }, $recs))));
+                                   $sectionMap = [];
+                                   $subSectionMap = [];
+                                   if (!empty($sectionIds)) {
+                                        try {
+                                             $secs = $db->table('form_sections')->select('section_id,section_name')->whereIn('section_id', $sectionIds)->get()->getResultArray();
+                                             foreach ($secs as $s) $sectionMap[(int)$s['section_id']] = $s['section_name'] ?? null;
+                                        } catch (\Throwable $__s) { /* ignore */
+                                        }
+                                   }
+                                   if (!empty($subSectionIds)) {
+                                        try {
+                                             $subs = $db->table('form_sub_sections')->select('sub_section_id,sub_section_name')->whereIn('sub_section_id', $subSectionIds)->get()->getResultArray();
+                                             foreach ($subs as $ss) $subSectionMap[(int)$ss['sub_section_id']] = $ss['sub_section_name'] ?? null;
+                                        } catch (\Throwable $__ss) { /* ignore */
+                                        }
+                                   }
+
+                                   foreach ($recs as $rec) {
+                                        $k = (string) ($rec['submission_id'] ?? '');
+                                        if ($k === '') continue;
+
+                                        $iid = isset($rec['input_id']) ? (int)$rec['input_id'] : 0;
+                                        if ($iid && isset($metaByInputId[$iid])) {
+                                             $rec['input_name'] = $metaByInputId[$iid]['input_name'] ?? null;
+                                             $rec['input_label'] = $metaByInputId[$iid]['input_label'] ?? null;
+                                        } else {
+                                             $rec['input_name'] = $rec['input_name'] ?? null;
+                                             $rec['input_label'] = $rec['input_label'] ?? null;
+                                        }
+
+                                        $secId = isset($rec['section_id']) ? (int)$rec['section_id'] : 0;
+                                        $subId = isset($rec['sub_section_id']) ? (int)$rec['sub_section_id'] : 0;
+                                        $rec['section_name'] = $secId && isset($sectionMap[$secId]) ? $sectionMap[$secId] : null;
+                                        $rec['sub_section_name'] = $subId && isset($subSectionMap[$subId]) ? $subSectionMap[$subId] : null;
+
+                                        if (!isset($grouped[$k])) $grouped[$k] = [];
+                                        $grouped[$k][] = $rec;
+                                   }
+                              }
+
+                              foreach ($rows as &$row) {
+                                   $key = (string) ($row['submission_key'] ?? '');
+                                   $row['records'] = $grouped[$key] ?? [];
+                              }
+                              unset($row);
+                         }
+                    } catch (\Throwable $e) {
+                         log_message('error', 'DynamicForm::list (legacy) failed to attach records: ' . $e->getMessage());
+                         // leave rows as-is on error
+                    }
+               }
+
+               return $this->respond([
+                    'draw' => (int) $request->getGet('draw'),
+                    'recordsTotal' => $total,
+                    'recordsFiltered' => $filtered,
+                    'data' => $rows,
+               ], 200);
+          } catch (\Throwable $e) {
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     public function itDashboardCounts()
+     {
+          //$this->validateAuthorizationNew();
+          $requestData = $this->request->getJSON(true) ?? [];
+          $selectedDate = isset($requestData['selectedDate']) ? trim((string) $requestData['selectedDate']) : '';
+          $selectedMonth = isset($requestData['selectedMonth']) ? trim((string) $requestData['selectedMonth']) : '';
+          $selectedFromDate = isset($requestData['selectedFromDate']) ? trim((string) $requestData['selectedFromDate']) : (isset($requestData['selected_from_date']) ? trim((string) $requestData['selected_from_date']) : '');
+          $selectedToDate = isset($requestData['selectedToDate']) ? trim((string) $requestData['selectedToDate']) : (isset($requestData['selected_to_date']) ? trim((string) $requestData['selected_to_date']) : '');
+          if ($selectedDate === '' && $selectedFromDate === '' && $selectedToDate === '') {
+               $selectedDate = date('Y-m-d');
+          }
+          $selectedBranch = isset($requestData['selectedBranch']) ? trim((string) $requestData['selectedBranch']) : '';
+          $selectedAuditedBy = isset($requestData['selectedAuditedBy']) ? trim((string) $requestData['selectedAuditedBy']) : '';
+          $formId = isset($requestData['form_id']) ? (int) $requestData['form_id'] : 0;
+
+          $db = \Config\Database::connect();
+
+          if ($formId <= 0) {
+               $row = $db->table('vdc_forms')
+                    ->select('id')
+                    ->where('LOWER(form_name)', strtolower('IT_Checklist'))
+                    ->get()
+                    ->getRowArray();
+               $formId = isset($row['id']) ? (int) $row['id'] : 0;
+          }
+
+          if ($formId <= 0) {
+               return $this->respond(['STATUS' => false, 'message' => 'IT_Checklist form not found', 'data' => null], 500);
+          }
+
+          $applyDateFilter = function ($qb, $dateValue, $fromDate = '', $toDate = '') use ($db) {
+               $dateValue = trim((string) $dateValue);
+               $fromDate = trim((string) $fromDate);
+               $toDate = trim((string) $toDate);
+               if ($fromDate !== '' || $toDate !== '') {
+                    if ($fromDate !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromDate)) {
+                         $qb->where("DATE_FORMAT(s.created_dtm,'%Y-%m-%d') >=", $fromDate);
+                    }
+                    if ($toDate !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $toDate)) {
+                         $qb->where("DATE_FORMAT(s.created_dtm,'%Y-%m-%d') <=", $toDate);
+                    }
+                    return;
+               }
+               if ($dateValue === '') {
+                    return;
+               }
+               if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateValue)) {
+                    $qb->where("DATE_FORMAT(s.created_dtm,'%Y-%m-%d')", $dateValue);
+               } elseif (preg_match('/^\d{4}-\d{2}$/', $dateValue)) {
+                    $qb->where("DATE_FORMAT(s.created_dtm,'%Y-%m')", $dateValue);
+               }
+          };
+
+          $applyAuditedByFilter = function ($qb, $auditedBy) use ($db) {
+               $auditedBy = trim((string) $auditedBy);
+               if ($auditedBy === '') {
+                    return;
+               }
+               $auditedByLower = mb_strtolower($auditedBy, 'UTF-8');
+               $escaped = $db->escape('%' . $auditedByLower . '%');
+               $qb->groupStart()
+                    ->where("LOWER(s.header) LIKE " . $escaped)
+                    ->groupEnd();
+          };
+
+          // Build audited_by list (emp_code + name when resolvable) to populate dropdowns
+          $auditedByList = [];
+          try {
+               $subsQb = $db->table('form_submissions as s')->select('s.header')->where('s.form_id', $formId);
+               $applyDateFilter($subsQb, $selectedDate, $selectedFromDate, $selectedToDate);
+               if ($selectedDate === '' && $selectedMonth !== '' && $selectedFromDate === '' && $selectedToDate === '') {
+                    $subsQb->where("DATE_FORMAT(s.created_dtm,'%Y-%m')", $selectedMonth);
+               }
+               if ($selectedBranch !== '') {
+                    $escaped = $db->escapeLikeString($selectedBranch);
+                    $subsQb->groupStart()
+                         ->like('s.header', '"centre_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":' . $escaped)
+                         ->orLike('s.header', $escaped)
+                         ->groupEnd();
+               }
+               $subsRows = $subsQb->get()->getResultArray();
+
+               $auditedValues = [];
+               foreach ($subsRows as $sr) {
+                    if (empty($sr['header']) || !is_string($sr['header'])) continue;
+                    $h = json_decode($sr['header'], true);
+                    if (!is_array($h)) continue;
+                    $av = isset($h['audited_by']) ? trim((string) $h['audited_by']) : '';
+                    if ($av !== '') $auditedValues[] = $av;
+               }
+               $auditedValues = array_values(array_unique($auditedValues));
+
+               // Attempt to extract emp_code candidates from audited_by strings
+               $empCandidates = [];
+               $mapOriginal = [];
+               foreach ($auditedValues as $val) {
+                    $code = '';
+                    if (preg_match('/(?:-|\(|\[)\s*([A-Za-z0-9_\-]+)\)?$/', $val, $m)) {
+                         $code = $m[1];
+                    } elseif (preg_match('/^[A-Z0-9_\-]{3,20}$/', $val)) {
+                         $code = $val;
+                    }
+                    if ($code !== '') {
+                         $empCandidates[] = $code;
+                         $mapOriginal[$code] = $val;
+                    } else {
+                         $mapOriginal[$val] = $val;
+                    }
+               }
+               $empCandidates = array_values(array_unique($empCandidates));
+
+               $empDetails = [];
+               if (!empty($empCandidates)) {
+                    try {
+                         $db2 = \Config\Database::connect('secondary');
+                         $rows = $db2->table('new_emp_master')->select('emp_code,fname,lname')->whereIn('emp_code', $empCandidates)->get()->getResultArray();
+                         foreach ($rows as $r) {
+                              $code = trim((string) ($r['emp_code'] ?? ''));
+                              $name = trim(((string) ($r['fname'] ?? '')) . ' ' . ((string) ($r['lname'] ?? '')));
+                              if ($code !== '') $empDetails[$code] = trim($name);
+                         }
+                    } catch (\Throwable $__e) {
+                         log_message('error', 'itDashboardCounts: failed to fetch emp details: ' . $__e->getMessage());
+                    }
+               }
+
+               // Build final list preserving readable label when name lookup fails
+               foreach ($mapOriginal as $key => $orig) {
+                    if (isset($empDetails[$key])) {
+                         $auditedByList[] = ['emp_code' => $key, 'name' => $empDetails[$key]];
+                    } else {
+                         if ($key === $orig) {
+                              $auditedByList[] = ['emp_code' => null, 'name' => $orig];
+                         } else {
+                              $auditedByList[] = ['emp_code' => $key, 'name' => $orig];
+                         }
+                    }
+               }
+          } catch (\Throwable $__e) {
+               log_message('error', 'itDashboardCounts audited_by list failed: ' . $__e->getMessage());
+               $auditedByList = [];
+          }
+
+          try {
+               $submissionQb = $db->table('form_submissions as s')->where('s.form_id', $formId);
+               $applyDateFilter($submissionQb, $selectedDate, $selectedFromDate, $selectedToDate);
+               if ($selectedDate === '' && $selectedMonth !== '' && $selectedFromDate === '' && $selectedToDate === '') {
+                    $submissionQb->where("DATE_FORMAT(s.created_dtm,'%Y-%m')", $selectedMonth);
+               }
+               if ($selectedBranch !== '') {
+                    $escaped = $db->escapeLikeString($selectedBranch);
+                    $submissionQb->groupStart()
+                         ->like('s.header', '"centre_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":' . $escaped)
+                         ->orLike('s.header', $escaped)
+                         ->groupEnd();
+               }
+               if ($selectedAuditedBy !== '') {
+                    $applyAuditedByFilter($submissionQb, $selectedAuditedBy);
+               }
+               $totalSubmissions = (int) $submissionQb->countAllResults(false);
+
+               $submissionIdsQb = $db->table('form_submissions as s')->select('s.id')->where('s.form_id', $formId);
+               $applyDateFilter($submissionIdsQb, $selectedDate, $selectedFromDate, $selectedToDate);
+               if ($selectedDate === '' && $selectedMonth !== '' && $selectedFromDate === '' && $selectedToDate === '') {
+                    $submissionIdsQb->where("DATE_FORMAT(s.created_dtm,'%Y-%m')", $selectedMonth);
+               }
+               if ($selectedBranch !== '') {
+                    $escaped = $db->escapeLikeString($selectedBranch);
+                    $submissionIdsQb->groupStart()
+                         ->like('s.header', '"centre_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":' . $escaped)
+                         ->orLike('s.header', $escaped)
+                         ->groupEnd();
+               }
+               if ($selectedAuditedBy !== '') {
+                    $applyAuditedByFilter($submissionIdsQb, $selectedAuditedBy);
+               }
+               $filteredSubmissionIds = array_column($submissionIdsQb->get()->getResultArray(), 'id');
+
+               $recordQb = $db->table('form_records as r')
+                    ->select('COUNT(*) as total_records', false)
+                    ->select('SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE "%not working%" THEN 1 ELSE 0 END) as not_working_count', false)
+                    ->select('SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE "%need repair%" THEN 1 ELSE 0 END) as need_repair_count', false)
+                    ->select('SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE "%need replacement%" THEN 1 ELSE 0 END) as need_replacement_count', false)
+                    ->select('SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE "%working%" THEN 1 ELSE 0 END) as working_count', false)
+                    ->select('SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE "%pending%" THEN 1 ELSE 0 END) as pending_count', false)
+                    ->select('SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE "%need service%" OR LOWER(TRIM(r.input_value)) LIKE "%servicing%" THEN 1 ELSE 0 END) as servicing_needed_count', false)
+                    ->select('SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE "%cleaning%" THEN 1 ELSE 0 END) as cleaning_needed_count', false)
+                    ->select("SUM(CASE WHEN LOWER(TRIM(r.input_value)) LIKE '%slow%' OR LOWER(TRIM(r.input_value)) LIKE '%slow pc%' OR LOWER(TRIM(r.input_value)) LIKE '%slow pcs%' OR LOWER(CONCAT(COALESCE(f.input_name, ''), ' ', COALESCE(f.input_label, ''))) REGEXP 'slow|performance' THEN 1 ELSE 0 END) as slow_pc_count", false)
+                    ->select("SUM(CASE WHEN LOWER(CONCAT(COALESCE(f.input_name, ''), ' ', COALESCE(f.input_label, ''))) REGEXP 'antivirus' AND LOWER(TRIM(r.input_value)) IN ('no','pending') THEN 1 ELSE 0 END) as antivirus_issue_count", false)
+                    ->select("SUM(CASE WHEN LOWER(CONCAT(COALESCE(f.input_name, ''), ' ', COALESCE(f.input_label, ''))) REGEXP 'cctv|camera' THEN 1 ELSE 0 END) as cctv_count", false)
+                    ->join('form_inputs as f', 'f.id = r.input_id', 'left')
+                    ->join('form_submissions s', 's.id = r.submission_id')
+                    ->where('s.form_id', $formId);
+
+               $applyDateFilter($recordQb, $selectedDate, $selectedFromDate, $selectedToDate);
+               if ($selectedDate === '' && $selectedMonth !== '' && $selectedFromDate === '' && $selectedToDate === '') {
+                    $recordQb->where("DATE_FORMAT(s.created_dtm,'%Y-%m')", $selectedMonth);
+               }
+               if ($selectedBranch !== '') {
+                    $escaped = $db->escapeLikeString($selectedBranch);
+                    $recordQb->groupStart()
+                         ->like('s.header', '"centre_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":' . $escaped)
+                         ->orLike('s.header', $escaped)
+                         ->groupEnd();
+               }
+               if ($selectedAuditedBy !== '') {
+                    $applyAuditedByFilter($recordQb, $selectedAuditedBy);
+               }
+
+               $counts = $recordQb->get()->getRowArray() ?: [];
+               $counts = array_map(function ($value) {
+                    return is_numeric($value) ? (int) $value : 0;
+               }, $counts);
+
+               $detailQb = $db->table('form_records as r')
+                    ->select('s.id as submission_id, s.created_dtm, s.header, r.input_value, f.input_name, f.input_label', false)
+                    ->join('form_inputs as f', 'f.id = r.input_id', 'left')
+                    ->join('form_submissions s', 's.id = r.submission_id')
+                    ->where('s.form_id', $formId);
+               $applyDateFilter($detailQb, $selectedDate, $selectedFromDate, $selectedToDate);
+               if ($selectedDate === '' && $selectedMonth !== '' && $selectedFromDate === '' && $selectedToDate === '') {
+                    $detailQb->where("DATE_FORMAT(s.created_dtm,'%Y-%m')", $selectedMonth);
+               }
+               if ($selectedBranch !== '') {
+                    $escaped = $db->escapeLikeString($selectedBranch);
+                    $detailQb->groupStart()
+                         ->like('s.header', '"centre_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":' . $escaped)
+                         ->orLike('s.header', $escaped)
+                         ->groupEnd();
+               }
+               if ($selectedAuditedBy !== '') {
+                    $applyAuditedByFilter($detailQb, $selectedAuditedBy);
+               }
+               $detailQb->where("(
+                    LOWER(COALESCE(r.input_value, '')) LIKE '%pending%' OR
+                    LOWER(COALESCE(r.input_value, '')) LIKE '%issue%' OR
+                    LOWER(COALESCE(r.input_value, '')) LIKE '%action%' OR
+                    LOWER(COALESCE(r.input_value, '')) LIKE '%identified%' OR
+                    LOWER(CONCAT(COALESCE(f.input_name, ''), ' ', COALESCE(f.input_label, ''))) LIKE '%pending%' OR
+                    LOWER(CONCAT(COALESCE(f.input_name, ''), ' ', COALESCE(f.input_label, ''))) LIKE '%issue%' OR
+                    LOWER(CONCAT(COALESCE(f.input_name, ''), ' ', COALESCE(f.input_label, ''))) LIKE '%action%' OR
+                    LOWER(CONCAT(COALESCE(f.input_name, ''), ' ', COALESCE(f.input_label, ''))) LIKE '%identified%'
+               )");
+               $detailRows = $detailQb->orderBy('s.created_dtm', 'desc')->limit(100)->get()->getResultArray();
+
+               $pendingIssues = [];
+               $issuesIdentified = [];
+               $actionsTaken = [];
+               foreach ($detailRows as $row) {
+                    $label = trim((string) ($row['input_label'] ?? $row['input_name'] ?? ''));
+                    $value = trim((string) ($row['input_value'] ?? ''));
+                    if ($label === '' && $value === '') {
+                         continue;
+                    }
+                    $normalizedLabel = strtolower(preg_replace('/\s+/', ' ', $label));
+                    $normalizedValue = strtolower(preg_replace('/\s+/', ' ', $value));
+                    $branchName = '';
+                    if (!empty($row['header']) && is_string($row['header'])) {
+                         $headerData = json_decode($row['header'], true);
+                         if (is_array($headerData)) {
+                              if (!empty($headerData['centre_name'])) {
+                                   $branchName = trim((string) $headerData['centre_name']);
+                              } elseif (!empty($headerData['branch_name'])) {
+                                   $branchName = trim((string) $headerData['branch_name']);
+                              } elseif (!empty($headerData['location'])) {
+                                   $branchName = trim((string) $headerData['location']);
+                              }
+                         }
+                    }
+                    $item = [
+                         'submission_id' => isset($row['submission_id']) ? (int) $row['submission_id'] : null,
+                         'created_dtm' => $row['created_dtm'] ?? null,
+                         'field' => $label,
+                         'value' => $value,
+                         'branch_name' => $branchName,
+                    ];
+                    if (strpos($normalizedLabel, 'pending') !== false) {
+                         $pendingIssues[] = $item;
+                    } elseif (strpos($normalizedLabel, 'identified') !== false || strpos($normalizedLabel, 'issues identified') !== false) {
+                         $issuesIdentified[] = $item;
+                    } elseif (strpos($normalizedLabel, 'action') !== false || strpos($normalizedLabel, 'taken') !== false) {
+                         $actionsTaken[] = $item;
+                    } elseif (strpos($normalizedValue, 'pending') !== false) {
+                         $pendingIssues[] = $item;
+                    } elseif (strpos($normalizedValue, 'identified') !== false || strpos($normalizedValue, 'issue') !== false) {
+                         $issuesIdentified[] = $item;
+                    } elseif (strpos($normalizedValue, 'action') !== false || strpos($normalizedValue, 'taken') !== false) {
+                         $actionsTaken[] = $item;
+                    }
+               }
+
+               $wallRackRows = $db->table('form_records as r')
+                    ->select('r.input_value, s.header, s.created_dtm, s.id as submission_id', false)
+                    ->join('form_inputs as f', 'f.id = r.input_id', 'left')
+                    ->join('form_submissions s', 's.id = r.submission_id')
+                    ->where('s.form_id', $formId);
+               if (!empty($filteredSubmissionIds)) {
+                    $wallRackRows->whereIn('s.id', $filteredSubmissionIds);
+               }
+               $applyDateFilter($wallRackRows, $selectedDate, $selectedFromDate, $selectedToDate);
+               if ($selectedDate === '' && $selectedMonth !== '' && $selectedFromDate === '' && $selectedToDate === '') {
+                    $wallRackRows->where("DATE_FORMAT(s.created_dtm,'%Y-%m')", $selectedMonth);
+               }
+               if ($selectedBranch !== '') {
+                    $escaped = $db->escapeLikeString($selectedBranch);
+                    $wallRackRows->groupStart()
+                         ->like('s.header', '"centre_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_name":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":"' . $escaped . '"')
+                         ->orLike('s.header', '"branch_id":' . $escaped)
+                         ->orLike('s.header', $escaped)
+                         ->groupEnd();
+               }
+               if ($selectedAuditedBy !== '') {
+                    $applyAuditedByFilter($wallRackRows, $selectedAuditedBy);
+               }
+               $wallRackRows->groupStart()
+                    ->orLike('LOWER(CONCAT(COALESCE(f.input_name, ""), " ", COALESCE(f.input_label, "")))', 'wall rack')
+                    ->orLike('LOWER(CONCAT(COALESCE(f.input_name, ""), " ", COALESCE(f.input_label, "")))', 'wall_rack')
+                    ->orLike('LOWER(CONCAT(COALESCE(f.input_name, ""), " ", COALESCE(f.input_label, "")))', 'rack')
+                    ->orLike('LOWER(CONCAT(COALESCE(f.input_name, ""), " ", COALESCE(f.input_label, "")))', 'photo')
+                    ->orLike('LOWER(CONCAT(COALESCE(f.input_name, ""), " ", COALESCE(f.input_label, "")))', 'image')
+                    ->orLike('LOWER(CONCAT(COALESCE(f.input_name, ""), " ", COALESCE(f.input_label, "")))', 'attachment')
+                    ->groupEnd();
+               $wallRackRows->groupStart()
+                    ->where("LOWER(r.input_value) LIKE '%.jpg%'")
+                    ->orWhere("LOWER(r.input_value) LIKE '%.jpeg%'")
+                    ->orWhere("LOWER(r.input_value) LIKE '%.png%'")
+                    ->orWhere("LOWER(r.input_value) LIKE '%.gif%'")
+                    ->groupEnd();
+
+               $wallRackPhotoRows = $wallRackRows->get()->getResultArray();
+               $wallRackPhotos = [];
+               foreach ($wallRackPhotoRows as $row) {
+                    $rawUrls = trim((string) ($row['input_value'] ?? ''));
+                    if ($rawUrls === '') {
+                         continue;
+                    }
+
+                    $header = [];
+                    if (isset($row['header']) && is_string($row['header'])) {
+                         $decoded = json_decode($row['header'], true);
+                         if (is_array($decoded)) {
+                              $header = $decoded;
+                         }
+                    }
+
+                    $branchName = '';
+                    if (!empty($header['centre_name'])) {
+                         $branchName = trim((string) $header['centre_name']);
+                    } elseif (!empty($header['branch_name'])) {
+                         $branchName = trim((string) $header['branch_name']);
+                    } elseif (!empty($header['location'])) {
+                         $branchName = trim((string) $header['location']);
+                    }
+
+                    $auditedBy = '';
+                    if (!empty($header['audited_by'])) {
+                         $auditedBy = trim((string) $header['audited_by']);
+                    }
+
+                    $uploadedAt = trim((string) ($row['created_dtm'] ?? ''));
+                    foreach (preg_split('/\s*,\s*/', $rawUrls) as $url) {
+                         $url = trim((string) $url);
+                         if ($url === '') {
+                              continue;
+                         }
+                         if (isset($wallRackPhotos[$url])) {
+                              continue;
+                         }
+
+                         $wallRackPhotos[$url] = [
+                              'url' => $url,
+                              'branch_name' => $branchName,
+                              'uploaded_at' => $uploadedAt,
+                              'audited_by' => $auditedBy,
+                              'submission_id' => isset($row['submission_id']) ? (int) $row['submission_id'] : null,
+                         ];
+                    }
+               }
+
+               $wallRackPhotos = array_values($wallRackPhotos);
+
+               try {
+                    if (!empty($filteredSubmissionIds) && $this->tableHasColumn('files', 'file_name') && $this->tableHasColumn('files', 'submission_id')) {
+                         $fileQb = $db->table('files as fl')
+                              ->select('fl.file_name, fl.submission_id, s.header, s.createdDTM', false)
+                              ->join('form_submissions s', 's.id = fl.submission_id', 'left')
+                              ->whereIn('fl.submission_id', $filteredSubmissionIds);
+
+                         if ($this->tableHasColumn('files', 'form_id')) {
+                              $fileQb->where('fl.form_id', $formId);
+                         }
+
+                         $fileQb->groupStart()
+                              ->where("LOWER(fl.file_name) LIKE '%.jpg%'")
+                              ->orWhere("LOWER(fl.file_name) LIKE '%.jpeg%'")
+                              ->orWhere("LOWER(fl.file_name) LIKE '%.png%'")
+                              ->orWhere("LOWER(fl.file_name) LIKE '%.gif%'")
+                              ->groupEnd();
+
+                         $fileRows = $fileQb->orderBy('fl.file_name', 'asc')->get()->getResultArray();
+                         foreach ($fileRows as $row) {
+                              $fileName = trim((string) ($row['file_name'] ?? ''));
+                              if ($fileName === '') {
+                                   continue;
+                              }
+                              if (isset($wallRackPhotos[$fileName])) {
+                                   continue;
+                              }
+
+                              $header = [];
+                              if (!empty($row['header']) && is_string($row['header'])) {
+                                   $decoded = json_decode($row['header'], true);
+                                   if (is_array($decoded)) {
+                                        $header = $decoded;
+                                   }
+                              }
+
+                              $branchName = '';
+                              if (!empty($header['centre_name'])) {
+                                   $branchName = trim((string) $header['centre_name']);
+                              } elseif (!empty($header['branch_name'])) {
+                                   $branchName = trim((string) $header['branch_name']);
+                              } elseif (!empty($header['location'])) {
+                                   $branchName = trim((string) $header['location']);
+                              }
+
+                              $auditedBy = '';
+                              if (!empty($header['audited_by'])) {
+                                   $auditedBy = trim((string) $header['audited_by']);
+                              }
+
+                              $uploadedAt = trim((string) ($row['createdDTM'] ?? $row['created_dtm'] ?? ''));
+                              $wallRackPhotos[$fileName] = [
+                                   'url' => $fileName,
+                                   'branch_name' => $branchName,
+                                   'uploaded_at' => $uploadedAt,
+                                   'audited_by' => $auditedBy,
+                                   'submission_id' => isset($row['submission_id']) ? (int) $row['submission_id'] : null,
+                              ];
+                         }
+
+                         $wallRackPhotos = array_values($wallRackPhotos);
+                    }
+               } catch (\Throwable $e) {
+                    log_message('error', 'itDashboardCounts files table merge failed: ' . $e->getMessage());
+               }
+
+               return $this->respond([
+                    'STATUS' => true,
+                    'message' => 'IT Dashboard counts.',
+                    'data' => array_merge([
+                         'form_id' => $formId,
+                         'selectedDate' => $selectedDate,
+                         'selectedFromDate' => $selectedFromDate,
+                         'selectedToDate' => $selectedToDate,
+                         'selectedMonth' => $selectedMonth,
+                         'selectedBranch' => $selectedBranch,
+                         'total_submissions' => $totalSubmissions,
+                         'pending_issues_list' => $pendingIssues,
+                         'issues_identified_list' => $issuesIdentified,
+                         'actions_taken_list' => $actionsTaken,
+                         'wall_rack_photos' => $wallRackPhotos,
+                         'wall_rack_photo_urls' => $wallRackPhotos,
+                         'wall_rack_photo_count' => count($wallRackPhotos),
+                         'audited_by_list' => $auditedByList,
+                    ], $counts),
+               ], 200);
+          } catch (\Throwable $e) {
+               log_message('error', 'itDashboardCounts failed: ' . $e->getMessage());
+               return $this->respond(['STATUS' => false, 'message' => 'Failed to retrieve IT dashboard counts.'], 500);
+          }
+     }
+
+     // Create a submission + insert records
+     public function create()
+     {
+          $auth = $this->validateAuthorizationNew();
+          if ($auth instanceof ResponseInterface) {
+               return $auth;
+          }
+
+
+          $payload = $this->readPayload();
+
+          $formId = (int) ($payload['form_id'] ?? 0);
+          $deptId = (int) ($payload['dept_id'] ?? 0);
+          $records = $payload['records'] ?? ($payload['inputs'] ?? null);
+
+          // log the payload for debugging
+          log_message('error', 'DynamicFormController::create payload: ' . json_encode($payload));
+
+          if ($formId <= 0) {
+               return $this->respond(['message' => 'form_id is required'], 400);
+          }
+          if ($deptId <= 0) {
+               return $this->respond(['message' => 'dept_id is required'], 400);
+          }
+          if (!is_array($records) || empty($records)) {
+               return $this->respond(['message' => 'records array is required'], 400);
+          }
+
+          $empCode = $this->resolveAuthEmpCode($auth);
+          if ($empCode === '') {
+               return $this->respond(['message' => 'Invalid token payload (emp_code missing)'], 401);
+          }
+
+          $createdDtm = isset($payload['created_dtm']) ? trim((string) $payload['created_dtm']) : '';
+          if ($createdDtm === '') {
+               $createdDtm = date('Y-m-d H:i:s');
+          }
+
+          $header = $payload['header'] ?? null;
+          $status = isset($payload['status']) ? trim((string) $payload['status']) : 'draft';
+          if ($status === '') {
+               $status = 'draft';
+          }
+
+          $db = \Config\Database::connect();
+          $db->transBegin();
+
+          try {
+               $useSubmissionTable = $this->usesSubmissionTable();
+
+               $numericSubmissionId = null;
+               $submissionUuid = null;
+               $isUpdateFromCreate = false; // server-side safeguard flag
+
+               if ($useSubmissionTable) {
+
+                    $submissionUuid = $this->uuidV4();
+
+                    $normalizedHeader = $this->normalizeHeaderWithBranch(
+                         is_array($header)
+                              ? $header
+                              : (
+                                   is_string($header)
+                                   ? (json_decode($header, true) ?: [])
+                                   : []
+                              )
+                    );
+
+                    $submissionRow = [
+                         'submission_uuid' => $submissionUuid,
+                         'form_id'         => $formId,
+                         'dept_id'         => $deptId,
+                         'header'          => $this->toStringValue($normalizedHeader),
+                         'status'          => $status,
+                         'created_by'      => $empCode,
+                         'created_dtm'     => $createdDtm,
+                    ];
+
+                    if (!$this->tableHasColumn('form_submissions', 'submission_uuid')) {
+                         unset($submissionRow['submission_uuid']);
+                    }
+
+                    $this->formSubmissionsModel->insert($submissionRow);
+
+                    $numericSubmissionId = (int)$this->formSubmissionsModel->getInsertID();
+
+                    if ($numericSubmissionId <= 0) {
+                         log_message('error', 'DynamicFormController::create failed to create submission');
+                    }
+               } else {
+                    $submissionUuid = isset($payload['submission_id']) ? trim((string) $payload['submission_id']) : '';
+                    if ($submissionUuid === '') {
+                         $submissionUuid = $this->uuidV4();
+                    }
+               }
+
+               $rows = [];
+               $errors = [];
+
+               foreach ($records as $i => $r) {
+                    if (!is_array($r)) {
+                         $errors[] = "records[$i] must be an object";
+                         continue;
+                    }
+
+                    $sectionId = (int) ($r['section_id'] ?? 0);
+                    $subSectionIdRaw = $r['sub_section_id'] ?? null;
+                    $subSectionId = ($subSectionIdRaw === null || $subSectionIdRaw === '' || (int) $subSectionIdRaw <= 0)
+                         ? null
+                         : (int) $subSectionIdRaw;
+                    $inputId = (int) ($r['input_id'] ?? 0);
+
+                    if ($sectionId <= 0) {
+                         $errors[] = "records[$i].section_id is required";
+                    }
+                    if ($inputId <= 0) {
+                         $errors[] = "records[$i].input_id is required";
+                    }
+
+                    $row = [
+                         'section_id' => $sectionId,
+                         'sub_section_id' => $subSectionId,
+                         'input_id' => $inputId,
+                         'input_value' => $this->toStringValue($r['input_value'] ?? ''),
+                         'dept_id' => $deptId,
+                         'created_dtm' => $createdDtm,
+                         'created_by' => $empCode,
+                         'form_id' => $formId,
+                    ];
+
+                    if ($useSubmissionTable) {
+                         $row['submission_id'] = $numericSubmissionId;
+                         $row['submission_uuid'] = $submissionUuid;
+                    } else {
+                         if ($this->tableHasColumn('form_records', 'submission_uuid')) {
+                              $row['submission_uuid'] = $submissionUuid;
+                         } else {
+                              $row['submission_id'] = $submissionUuid;
+                         }
+                    }
+
+                    $rows[] = $row;
+               }
+
+               if (!empty($errors)) {
+                    $db->transRollback();
+                    return $this->respond(['message' => $errors], 400);
+               }
+
+               // Server-side required-field validation (mirror front-end isInputRequired logic)
+               // Skip this validation for draft saves to allow partial saves from the frontend.
+               $hasFileInputs = false;
+               try {
+                    $shouldValidateRequired = (isset($status) && trim((string)$status) === 'submitted');
+                    if ($shouldValidateRequired) {
+                         $fim = model(\App\Models\FormInputsModel::class);
+                         $inputsMeta = $fim->where('form_id', $formId)->findAll();
+
+                         $metaById = [];
+                         $metaByName = [];
+                         foreach ($inputsMeta as $m) {
+                              $metaById[(int)$m['id']] = $m;
+                              $metaByName[(string)$m['input_name']] = $m;
+                              $inputType = strtolower(trim((string) ($m['input_type'] ?? '')));
+                              if ($inputType === 'file') {
+                                   $hasFileInputs = true;
+                              }
+                         }
+
+                         // Build submitted values map by input_id (prefer last non-empty)
+                         $submitted = [];
+                         foreach ($records as $rec) {
+                              $iid = (int) ($rec['input_id'] ?? 0);
+                              if ($iid <= 0) continue;
+                              $val = isset($rec['input_value']) ? (string) $rec['input_value'] : '';
+                              if (!isset($submitted[$iid]) || trim((string)$val) !== '') {
+                                   $submitted[$iid] = $val;
+                              }
+                         }
+
+                         $requiredErrors = [];
+                         foreach ($inputsMeta as $m) {
+                              if ((string)($m['status'] ?? 'A') !== 'A') continue;
+
+                              $inputId = (int)$m['id'];
+
+                              // Evaluate visibility using show_when_field/operator/value
+                              $visible = true;
+                              $whenField = trim((string) ($m['show_when_field'] ?? ''));
+                              if ($whenField !== '') {
+                                   $ctrlMeta = $metaByName[$whenField] ?? null;
+                                   $ctrlVal = $ctrlMeta ? (string) ($submitted[(int)$ctrlMeta['id']] ?? '') : '';
+                                   $whenValue = trim((string) ($m['show_when_value'] ?? ''));
+                                   $op = trim((string) ($m['show_operator'] ?? '=')) ?: '=';
+
+                                   if ($whenValue === '') {
+                                        $visible = $ctrlVal !== '';
+                                   } else {
+                                        if ($op === '!=') $visible = $ctrlVal !== $whenValue;
+                                        elseif ($op === '>') $visible = floatval($ctrlVal) > floatval($whenValue);
+                                        elseif ($op === '<') $visible = floatval($ctrlVal) < floatval($whenValue);
+                                        else $visible = $ctrlVal === $whenValue;
+                                   }
+                              }
+
+                              if (!$visible) continue;
+
+                              // Determine if field is required
+                              $isRequired = false;
+                              if (!empty($m['input_required']) && (int)$m['input_required']) {
+                                   $isRequired = true;
+                              } else {
+                                   $reqField = trim((string) ($m['required_when_field'] ?? ''));
+                                   if ($reqField !== '') {
+                                        $ctrlMeta = $metaByName[$reqField] ?? null;
+                                        $ctrlVal = $ctrlMeta ? (string) ($submitted[(int)$ctrlMeta['id']] ?? '') : '';
+                                        $reqWhenValue = trim((string) ($m['required_when_value'] ?? ''));
+                                        if ($reqWhenValue === '') {
+                                             $isRequired = $ctrlVal !== '';
+                                        } else {
+                                             $isRequired = $ctrlVal === $reqWhenValue;
+                                        }
+                                   }
+                              }
+
+                              if ($isRequired) {
+                                   $inputType = strtolower(trim((string) ($m['input_type'] ?? '')));
+                                   if ($inputType === 'file') {
+                                        // file attachments are uploaded separately after the record save,
+                                        // so do not fail create() purely because input_value is empty here.
+                                        continue;
+                                   }
+                                   $val = isset($submitted[$inputId]) ? trim((string)$submitted[$inputId]) : '';
+                                   if ($val === '') {
+                                        $requiredErrors[] = sprintf("%s is required", $m['input_label'] ?: $m['input_name']);
+                                   }
+                              }
+                         }
+
+                         if (!empty($requiredErrors)) {
+                              $db->transRollback();
+                              return $this->respond(['message' => $requiredErrors], 400);
+                         }
+                    }
+               } catch (\Throwable $e) {
+                    // Best-effort validation - log and continue to avoid blocking on unexpected schema issues
+                    log_message('error', 'DynamicForm::create required-field validation failed: ' . $e->getMessage());
+               }
+
+               // If create() was converted into an update (server-side), purge existing records for this submission
+
+
+               $ok = $this->formRecordsModel->insertBatch($rows);
+               if ($ok === false) {
+                    $db->transRollback();
+                    return $this->respond([
+                         'message' => 'Failed to save records',
+                         'errors' => $this->formRecordsModel->errors(),
+                    ], 500);
+               }
+
+               $db->transCommit();
+
+               // Log submission create
+               try {
+                    $lm = new LogsModel();
+                    $lm->insertLog([
+                         'uri' => $this->request->getURI()->getPath(),
+                         'method' => $this->request->getMethod(),
+                         'params' => [
+                              'form_id' => $formId,
+                              'dept_id' => $deptId,
+                              'rows_inserted' => count($rows),
+                              'submission_id' => $useSubmissionTable ? $numericSubmissionId : $submissionUuid,
+                              'submission_uuid' => $submissionUuid,
+                         ],
+                         'ip_address' => $this->request->getIPAddress(),
+                         'time' => time(),
+                         'authorized' => 'Y',
+                         'response_code' => 201,
+                         'action' => 'createSubmission',
+                         'entity_type' => 'form_submission',
+                         'entity_id' => $useSubmissionTable ? (string)$numericSubmissionId : (string)$submissionUuid,
+                         'user_id' => $empCode,
+                    ]);
+               } catch (\Throwable $e) {
+                    log_message('error', 'DynamicForm::create log failed: ' . $e->getMessage());
+               }
+
+               $responsePayload = [
+                    'status' => true,
+                    'message' => 'Saved',
+                    'inserted' => count($rows),
+                    'created_dtm' => $createdDtm,
+                    'submission_id' => $useSubmissionTable ? $numericSubmissionId : $submissionUuid,
+                    'submission_uuid' => $submissionUuid,
+               ];
+
+               // Send response immediately, then attempt background email trigger (best-effort)
+               $response = $this->respondCreated($responsePayload);
+               try {
+                    if (function_exists('fastcgi_finish_request')) {
+                         fastcgi_finish_request();
+                    }
+               } catch (\Throwable $e) {
+                    // ignore - continue to best-effort email send
+               }
+
+               // Attempt email trigger on CREATE if recipient context exists (best-effort)
+               try {
+                    $formIdForTrigger = (int)$formId;
+                    $submissionIdForTrigger = $useSubmissionTable ? $numericSubmissionId : $submissionUuid;
+                    $forceTrigger = !empty($payload['force']);
+                    $skipTrigger = !empty($payload['skip_email_trigger']);
+
+                    $hasRecipientContext = is_array($header) && (
+                         !empty($header['branch_manager_email'])
+                         || !empty($header['branch_email'])
+                         || !empty($header['branch_id'])
+                    );
+
+                    $skipEmailDueToPendingFiles = false;
+                    $hasPendingPhotos = false;
+                    if (!empty($payload['photos']) && is_array($payload['photos'])) {
+                         foreach ($payload['photos'] as $entry) {
+                              if (is_array($entry) && count(array_filter($entry, function ($x) {
+                                   return $x !== null && $x !== '';
+                              })) > 0) {
+                                   $hasPendingPhotos = true;
+                                   break;
+                              }
+                         }
+                    }
+                    if (($hasFileInputs || $hasPendingPhotos) && empty($payload['pdf_file_id'])) {
+                         $skipEmailDueToPendingFiles = true;
+                    }
+
+                    $isSubmitted = (isset($status) && trim((string)$status) === 'submitted');
+                    $shouldTrigger = !$skipTrigger && !$skipEmailDueToPendingFiles && ($forceTrigger || ($hasRecipientContext && $isSubmitted));
+
+                    if (!$shouldTrigger) {
+                         try {
+                              $reason = $skipTrigger ? 'skip_trigger_flag' : ($skipEmailDueToPendingFiles ? 'pending_file_inputs' : 'no_recipients');
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] create_skip_trigger: form_id={$formIdForTrigger} submission={$submissionIdForTrigger} reason={$reason}\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+                    } else {
+                         try {
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] create_invoking_trigger: form_id={$formIdForTrigger} submission={$submissionIdForTrigger} header=" . json_encode($header ?? null) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+                         $this->triggerSubmissionEmailOnSave($formIdForTrigger, $submissionIdForTrigger, $header ?? null, $createdDtm, $payload ?? []);
+                    }
+               } catch (\Throwable $e) {
+                    log_message('error', 'DynamicForm::create trigger email failed: ' . $e->getMessage());
+               }
+
+               return $response;
+          } catch (\Throwable $e) {
+               $db->transRollback();
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     // View a submission with its records
+     public function show($submissionId)
+     {
+          $auth = $this->validateAuthorizationNew();
+          if ($auth instanceof ResponseInterface) {
+               return $auth;
+          }
+
+          $sid = is_string($submissionId) ? trim($submissionId) : (string) $submissionId;
+          $stableSubmissionUuid = '';
+          if ($sid === '') {
+               return $this->respond(['message' => 'submission_id required'], 400);
+          }
+
+          $useSubmissionTable = $this->usesSubmissionTable();
+          $db = \Config\Database::connect();
+
+          $submission = null;
+          if ($useSubmissionTable && ctype_digit($sid)) {
+               $submission = $db->table('form_submissions')->where('id', (int) $sid)->get()->getRowArray();
+          }
+
+          $qb = $db->table('form_records')->orderBy('id', 'asc');
+          if ($useSubmissionTable && ctype_digit($sid)) {
+               $qb->where('submission_id', (int) $sid);
+          } else {
+               if ($this->tableHasColumn('form_records', 'submission_uuid')) {
+                    $qb->where('submission_uuid', $sid);
+               } else {
+                    $qb->where('submission_id', $sid);
+               }
+          }
+
+          $records = $qb->get()->getResultArray();
+          if (!$submission && empty($records)) {
+               return $this->respond(['message' => 'Not found'], 404);
+          }
+
+          // Fetch photos and group by caption to attach to records
+          $photoModel = model(BrandingChecklistModel::class);
+          $photosByCaption = [];
+          try {
+               $submissionIdForPhotos = null;
+               if ($useSubmissionTable && ctype_digit($sid)) {
+                    $submissionIdForPhotos = (int) $sid;
+               } elseif (!empty($records)) {
+                    // For legacy mode, try to get submission_id from first record
+                    $submissionIdForPhotos = isset($records[0]['submission_id']) ? (int) $records[0]['submission_id'] : null;
+               }
+
+               if ($submissionIdForPhotos) {
+                    $photos = $photoModel->getPhotos($submissionIdForPhotos);
+
+                    // Group photos by caption (field key)
+                    foreach ($photos as $photo) {
+                         $caption = trim((string) ($photo['caption'] ?? ''));
+                         if ($caption === '') continue;
+                         if (!isset($photosByCaption[$caption])) {
+                              $photosByCaption[$caption] = [];
+                         }
+                         $photosByCaption[$caption][] = $photo['filename'];
+                    }
+               }
+          } catch (\Throwable $e) {
+               log_message('error', 'DynamicForm::show failed to fetch photos: ' . $e->getMessage());
+          }
+
+          // Fetch form inputs metadata to build field keys
+          $inputMetaMap = []; // input_id => field_key_slug
+          if (!empty($records)) {
+               try {
+                    $formId = null;
+                    if ($submission && isset($submission['form_id'])) {
+                         $formId = (int) $submission['form_id'];
+                    } elseif (isset($records[0]['form_id'])) {
+                         $formId = (int) $records[0]['form_id'];
+                    }
+
+                    if ($formId) {
+                         $inputs = $db->table('form_inputs')
+                              ->where('form_id', $formId)
+                              ->where('status', 'A')
+                              ->get()
+                              ->getResultArray();
+
+                         foreach ($inputs as $inp) {
+                              $inputId = (int) $inp['id'];
+                              // Generate field key slug from input_name (matching frontend logic)
+                              $name = trim((string) ($inp['input_name'] ?? ''));
+                              if ($name !== '') {
+                                   // Slugify: lowercase, replace non-alphanumeric with underscore
+                                   $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', $name));
+                                   $slug = trim($slug, '_');
+                                   $inputMetaMap[$inputId] = $slug;
+                              }
+                         }
+                    }
+               } catch (\Throwable $e) {
+                    log_message('error', 'DynamicForm::show failed to fetch input metadata: ' . $e->getMessage());
+               }
+          }
+
+          // Attach photos to records by matching field key patterns
+          foreach ($records as &$record) {
+               $record['attachments'] = '';
+
+               $inputId = isset($record['input_id']) ? (int) $record['input_id'] : 0;
+               $sectionId = isset($record['section_id']) ? (int) $record['section_id'] : 0;
+               $subSectionId = isset($record['sub_section_id']) ? (int) $record['sub_section_id'] : 0;
+
+               // Build possible field key patterns
+               $possibleKeys = [];
+
+               // Pattern 1: s{sectionId}__ss{subSectionId}__{fieldSlug}
+               if ($sectionId && $subSectionId && isset($inputMetaMap[$inputId])) {
+                    $possibleKeys[] = "s{$sectionId}__ss{$subSectionId}__{$inputMetaMap[$inputId]}";
+               }
+
+               // Pattern 2: {fieldSlug} (for ungrouped inputs)
+               if (isset($inputMetaMap[$inputId])) {
+                    $possibleKeys[] = $inputMetaMap[$inputId];
+               }
+
+               // Pattern 3: Check if input_value contains filenames (for file-type inputs)
+               $inputValue = trim((string) ($record['input_value'] ?? ''));
+               if ($inputValue !== '') {
+                    $valueFiles = array_filter(array_map('trim', explode(',', $inputValue)));
+                    // Try to match these filenames against any caption's photos
+                    foreach ($photosByCaption as $caption => $filenames) {
+                         foreach ($filenames as $filename) {
+                              if (in_array($filename, $valueFiles, true)) {
+                                   $record['attachments'] = $record['attachments']
+                                        ? $record['attachments'] . ',' . $filename
+                                        : $filename;
+                              }
+                         }
+                    }
+               }
+
+               // Match against photos_by_caption using constructed field keys
+               foreach ($possibleKeys as $key) {
+                    if (isset($photosByCaption[$key]) && !empty($photosByCaption[$key])) {
+                         $photos = implode(',', $photosByCaption[$key]);
+                         $record['attachments'] = $record['attachments']
+                              ? $record['attachments'] . ',' . $photos
+                              : $photos;
+                    }
+               }
+
+               // Remove duplicates
+               if ($record['attachments']) {
+                    $unique = array_unique(array_filter(explode(',', $record['attachments'])));
+                    $record['attachments'] = implode(',', $unique);
+               }
+          }
+          unset($record);
+
+          // Ensure submission.header is returned as a decoded array and attach branch lookup
+          $branchLookup = null;
+          try {
+               $hdr = [];
+               if (isset($submission['header'])) {
+                    $hdr = is_array($submission['header']) ? $submission['header'] : (json_decode((string)$submission['header'], true) ?: []);
+               }
+               if (!empty($hdr)) {
+                    $hdr = $this->normalizeHeaderWithBranch($hdr);
+                    $submission['header'] = $hdr;
+                    if (!empty($hdr['branch_id'])) {
+                         try {
+                              $bm = model(\App\Models\BranchModel::class);
+                              $branchLookup = $bm->getBranchDetails($hdr['branch_id']);
+                         } catch (\Throwable $__b) {
+                              // ignore branch lookup failures
+                         }
+                    }
+               } else {
+                    $submission['header'] = $hdr;
+               }
+          } catch (\Throwable $__e) {
+               log_message('debug', 'DynamicForm::show branch lookup failed: ' . $__e->getMessage());
+          }
+
+          return $this->respond([
+               'data' => [
+                    'submission' => $submission,
+                    'records' => $records,
+                    'photos_by_caption' => $photosByCaption, // Include for debugging/frontend use
+                    'branch_lookup' => $branchLookup,
+               ],
+          ], 200);
+     }
+
+     // Update header/status and (optionally) replace records
+     public function update($submissionId)
+     {
+          $user = $this->validateAuthorizationNew();
+          if ($user instanceof ResponseInterface) {
+               return $user;
+          }
+
+          $sid = is_string($submissionId) ? trim($submissionId) : (string) $submissionId;
+          if ($sid === '') {
+               return $this->respond(['message' => 'submission_id required'], 400);
+          }
+
+          $payload = $this->readPayload();
+          $records = $payload['records'] ?? null;
+          $header = $payload['header'] ?? null;
+          $status = isset($payload['status']) ? trim((string) $payload['status']) : null;
+
+          $empCode = $this->resolveAuthEmpCode($user);
+          if ($empCode === '') {
+               return $this->respond(['message' => 'Invalid token payload (emp_code missing)'], 401);
+          }
+
+          $role = $this->resolveAuthRole($user);
+
+          $useSubmissionTable = $this->usesSubmissionTable();
+
+          $db = \Config\Database::connect();
+          $db->transBegin();
+
+          try {
+               if ($useSubmissionTable && ctype_digit($sid)) {
+                    $sub = $db->table('form_submissions')->where('id', (int) $sid)->get()->getRowArray();
+                    if (!$sub) {
+                         $db->transRollback();
+                         return $this->respond(['message' => 'Not found'], 404);
+                    }
+                    if (!$this->canEditSubmission($sub, $user)) {
+                         $db->transRollback();
+                         return $this->respond(['message' => 'Forbidden'], 403);
+                    }
+
+                    $stableSubmissionUuid = isset($sub['submission_uuid']) ? trim((string) $sub['submission_uuid']) : '';
+
+                    $subUpdate = [];
+                    $hasRealChange = false; // used below to decide whether to trigger
+                    if ($header !== null) {
+                         // Merge incoming header with existing DB header for submissions to avoid
+                         // overwriting system-managed keys (notably `email_sent_events`) that
+                         // are persisted by triggerSubmissionEmailOnSave() as durable idempotency.
+                         if ($useSubmissionTable && isset($sub) && !empty($sub['header'])) {
+                              $existingHdr = is_array($sub['header']) ? $sub['header'] : (json_decode($sub['header'], true) ?: []);
+                              $incomingHdr = is_array($header) ? $header : (json_decode((string)$header, true) ?: []);
+
+                              // Merge/preserve email_sent_events specifically
+                              $existingEvents = isset($existingHdr['email_sent_events']) && is_array($existingHdr['email_sent_events']) ? $existingHdr['email_sent_events'] : [];
+                              $incomingEvents = isset($incomingHdr['email_sent_events']) && is_array($incomingHdr['email_sent_events']) ? $incomingHdr['email_sent_events'] : [];
+                              $mergedEvents = array_values(array_unique(array_merge($existingEvents, $incomingEvents)));
+                              if (!empty($mergedEvents)) {
+                                   $incomingHdr['email_sent_events'] = $mergedEvents;
+                              }
+
+                              // Merge, giving precedence to incoming values for user-supplied keys
+                              $mergedHdr = array_merge($existingHdr, $incomingHdr);
+                              // Normalize branch-derived fields so stored header is authoritative
+                              $mergedHdr = $this->normalizeHeaderWithBranch($mergedHdr);
+                              $subUpdate['header'] = $this->toStringValue($mergedHdr);
+                              // Check if header actually changed
+                              if (json_encode($mergedHdr) !== json_encode($existingHdr)) {
+                                   $hasRealChange = true;
+                              }
+                         } else {
+                              // Normalize incoming header when no existing header present
+                              $norm = $this->normalizeHeaderWithBranch(is_array($header) ? $header : (is_string($header) ? (json_decode((string)$header, true) ?: []) : $header));
+                              $subUpdate['header'] = $this->toStringValue($norm);
+                              // Check if header actually changed
+                              $existingHdr = is_array($sub['header']) ? $sub['header'] : (json_decode($sub['header'], true) ?: []);
+                              $incomingHdr = is_array($header) ? $header : (json_decode((string)$header, true) ?: []);
+                              if (json_encode($incomingHdr) !== json_encode($existingHdr)) {
+                                   $hasRealChange = true;
+                              }
+                         }
+                    }
+                    if ($status !== null && $status !== '') {
+                         if (!isset($sub['status']) || $sub['status'] !== $status) {
+                              $subUpdate['status'] = $status;
+                              $hasRealChange = true;
+                         }
+                    }
+                    if ($hasRealChange) {
+                         $subUpdate['updated_dtm'] = date('Y-m-d H:i:s');
+                         $subUpdate['updated_by'] = $empCode;
+                         $db->table('form_submissions')->where('id', (int) $sid)->update($subUpdate);
+                    }
+               }
+
+               if ($records !== null) {
+                    if (!is_array($records)) {
+                         $db->transRollback();
+                         return $this->respond(['message' => 'records must be an array'], 400);
+                    }
+
+                    $formId = (int) ($payload['form_id'] ?? 0);
+                    $deptId = (int) ($payload['dept_id'] ?? 0);
+                    if ($formId <= 0 || $deptId <= 0) {
+                         $db->transRollback();
+                         return $this->respond(['message' => 'form_id and dept_id are required when updating records'], 400);
+                    }
+
+                    $del = $db->table('form_records');
+                    if ($useSubmissionTable && ctype_digit($sid)) {
+                         $del->where('submission_id', (int) $sid);
+                    } else {
+                         if ($this->tableHasColumn('form_records', 'submission_uuid')) {
+                              $del->where('submission_uuid', $sid);
+                         } else {
+                              $del->where('submission_id', $sid);
+                         }
+                    }
+                    $del->delete();
+
+                    $now = date('Y-m-d H:i:s');
+                    $rows = [];
+                    $errors = [];
+
+                    foreach ($records as $i => $r) {
+                         if (!is_array($r)) {
+                              $errors[] = "records[$i] must be an object";
+                              continue;
+                         }
+
+                         $sectionId = (int) ($r['section_id'] ?? 0);
+                         $subSectionIdRaw = $r['sub_section_id'] ?? null;
+                         $subSectionId = ($subSectionIdRaw === null || $subSectionIdRaw === '' || (int) $subSectionIdRaw <= 0)
+                              ? null
+                              : (int) $subSectionIdRaw;
+                         $inputId = (int) ($r['input_id'] ?? 0);
+
+                         if ($sectionId <= 0) {
+                              $errors[] = "records[$i].section_id is required";
+                         }
+                         if ($inputId <= 0) {
+                              $errors[] = "records[$i].input_id is required";
+                         }
+
+                         $row = [
+                              'section_id' => $sectionId,
+                              'sub_section_id' => $subSectionId,
+                              'input_id' => $inputId,
+                              'input_value' => $this->toStringValue($r['input_value'] ?? ''),
+                              'dept_id' => $deptId,
+                              'created_dtm' => $now,
+                              'created_by' => $empCode,
+                              'updated_dtm' => $now,
+                              'updated_by' => $empCode,
+                              'form_id' => $formId,
+                         ];
+
+                         if ($useSubmissionTable && ctype_digit($sid)) {
+                              $row['submission_id'] = (int) $sid;
+                              if ($this->tableHasColumn('form_records', 'submission_uuid') && $stableSubmissionUuid !== '') {
+                                   $row['submission_uuid'] = $stableSubmissionUuid;
+                              }
+                         } else {
+                              if ($this->tableHasColumn('form_records', 'submission_uuid')) {
+                                   $row['submission_uuid'] = $sid;
+                              } else {
+                                   $row['submission_id'] = $sid;
+                              }
+                         }
+
+                         $rows[] = $row;
+                    }
+
+                    if (!empty($errors)) {
+                         $db->transRollback();
+                         return $this->respond(['message' => $errors], 400);
+                    }
+
+                    $ok = $this->formRecordsModel->insertBatch($rows);
+                    if ($ok === false) {
+                         $db->transRollback();
+                         return $this->respond(['message' => 'Failed to update records', 'errors' => $this->formRecordsModel->errors()], 500);
+                    }
+               }
+
+               // Process deleted_photos if provided (array of filenames or mapping)
+               if (!empty($payload['deleted_photos'])) {
+                    try {
+                         $filenames = [];
+                         foreach ($payload['deleted_photos'] as $k => $v) {
+                              if (is_array($v)) {
+                                   foreach ($v as $fn) {
+                                        $filenames[] = (string)$fn;
+                                   }
+                              } else {
+                                   $filenames[] = (string)$v;
+                              }
+                         }
+                         $filenames = array_values(array_filter(array_map('trim', $filenames)));
+                         if (!empty($filenames) && ctype_digit((string)$sid)) {
+                              $photoModel = model(\App\Models\BrandingChecklistModel::class);
+                              $photoModel->deletePhotos((int)$sid, $filenames);
+                         }
+                    } catch (\Throwable $e) {
+                         // non-fatal — log for diagnostics
+                         log_message('error', 'Failed to delete photos for submission ' . $sid . ': ' . $e->getMessage());
+                    }
+               }
+
+               $db->transCommit();
+
+               // Log submission update
+               try {
+                    $lm = new LogsModel();
+                    $lm->insertLog([
+                         'uri' => $this->request->getURI()->getPath(),
+                         'method' => $this->request->getMethod(),
+                         'params' => [
+                              'submission_id' => $sid,
+                              'status' => $status,
+                              'updated_fields' => isset($payload['records']) ? 'records' : 'header',
+                              'user_role' => $user->role ?? null,
+                         ],
+                         'ip_address' => $this->request->getIPAddress(),
+                         'time' => time(),
+                         'authorized' => 'Y',
+                         'response_code' => 200,
+                         'action' => 'updateSubmission',
+                         'entity_type' => 'form_submission',
+                         'entity_id' => (string)$sid,
+                         'user_id' => $empCode,
+                    ]);
+               } catch (\Throwable $e) {
+                    log_message('error', 'DynamicForm::update log failed: ' . $e->getMessage());
+               }
+
+               $respPayload = ['message' => 'Updated', 'submission_id' => $sid];
+
+               // Respond immediately then try background email trigger (best-effort)
+               $response = $this->respond($respPayload, 200);
+               try {
+                    if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+               } catch (\Throwable $e) {
+               }
+
+               try {
+                    $formIdForTrigger = (int) ($payload['form_id'] ?? 0);
+
+                    // decide whether to run the trigger at all -- avoid spurious emails when
+                    // the front-end fires update() without any real data change (e.g. retrying a
+                    // save or writing the same header twice).
+                    $newPdfUploaded = !empty($payload['pdf_file_id']) && (!is_array($header) || empty($header['pdf_file_id']));
+                    $hasPendingPhotos = false;
+                    if (!empty($payload['photos']) && is_array($payload['photos'])) {
+                         foreach ($payload['photos'] as $entry) {
+                              if (is_array($entry) && count(array_filter($entry, function ($x) {
+                                   return $x !== null && $x !== '';
+                              })) > 0) {
+                                   $hasPendingPhotos = true;
+                                   break;
+                              }
+                         }
+                    }
+                    $skipEmailDueToPendingFiles = $hasPendingPhotos && empty($payload['pdf_file_id']);
+                    $forceTrigger = !empty($payload['force']);
+                    $wasSubmittedBefore = isset($sub['status']) && trim((string)$sub['status']) === 'submitted';
+                    $willBeSubmittedNow = isset($status) && trim((string)$status) === 'submitted';
+
+                    // Only trigger when transitioning from non-submitted -> submitted, or when force is requested.
+                    $statusTransitionToSubmitted = $willBeSubmittedNow && !$wasSubmittedBefore;
+
+                    file_put_contents(
+                         APPPATH . '../writable/logs/email_trigger_debug.log',
+                         "[" . date('Y-m-d H:i:s') . "] CCTV status debug: " .
+                              json_encode([
+                                   'form_id' => $formIdForTrigger,
+                                   'old_status' => $sub['status'] ?? null,
+                                   'new_status' => $status,
+                                   'wasSubmittedBefore' => $wasSubmittedBefore,
+                                   'willBeSubmittedNow' => $willBeSubmittedNow,
+                                   'force' => $forceTrigger
+                              ]) . "\n",
+                         FILE_APPEND
+                    );
+
+                    $shouldTrigger = !$skipEmailDueToPendingFiles && ($forceTrigger || $statusTransitionToSubmitted);
+
+                    if (!$shouldTrigger) {
+                         try {
+                              $reason = $skipEmailDueToPendingFiles ? 'pending_photos' : 'no_changes';
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] update_skip_trigger: form_id={$formIdForTrigger} submission={$sid} reason={$reason}\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                              // ignore
+                         }
+                    } else {
+                         try {
+                              file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] update_invoking_trigger: form_id={$formIdForTrigger} submission={$sid} header=" . json_encode($header ?? null) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                              // ignore logging failures
+                         }
+                         $this->triggerSubmissionEmailOnSave($formIdForTrigger, $sid, $header ?? null, date('Y-m-d H:i:s'), $payload ?? []);
+                    }
+               } catch (\Throwable $e) {
+                    log_message('error', 'DynamicForm::update trigger email failed: ' . $e->getMessage());
+               }
+
+               return $response;
+          } catch (\Throwable $e) {
+               $db->transRollback();
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     /**
+      * Best-effort background email trigger for submissions that are bound to an email template.
+      * - Finds email template by `form_id` (if any)
+      * - Builds a small variables map for template replacement
+      * - Attaches an uploaded frontend-generated PDF when `pdf_file_id` is provided in payload/header
+      * - Sends to branch emails (branch_manager_email + branch_email) and lets the template's CCs apply
+      * NOTE: failures are logged and do not affect submission success.
+      */
+
+     private function triggerSubmissionEmailOnSave(int $formId, $submissionId, $header = null, $createdDtm = null, array $payload = [])
+     {
+          try {
+               if ($formId <= 0) return;
+
+               // Track send outcome and lock artifacts across the whole flow.
+               $emailSentOk = false;
+               $cache = null;
+               $cacheKey = '';
+               $lockFile = '';
+
+               $db = \Config\Database::connect();
+
+               // Find template bound to this form_id
+               $tmpl = $db->table('email_templates')->where('form_id', $formId)->get()->getRowArray();
+               if (!$tmpl) return; // nothing to do
+
+               // Debug: record trigger invocation and template lookup
+               try {
+                    $dbg = "[" . date('Y-m-d H:i:s') . "] triggerSubmissionEmailOnSave called: form_id={$formId} submission={$submissionId} template_event_key=" . ($tmpl['event_key'] ?? 'NULL') . "\n";
+                    @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', $dbg, FILE_APPEND);
+               } catch (\Throwable $__dbg) {
+               }
+
+               // UAT/dev helper: optionally bypass persisted dedupe checks.
+               $ciEnv = strtolower(trim((string)(getenv('CI_ENVIRONMENT') ?: (defined('ENVIRONMENT') ? ENVIRONMENT : ''))));
+               $appBase = strtolower(trim((string)(getenv('app.baseURL') ?: '')));
+               $isPrivateHost = (bool) preg_match('#https?://(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)#', $appBase);
+               $bypassRaw = strtolower(trim((string)(getenv('EMAIL_BYPASS_PERSISTED_DEDUPE') ?: '')));
+               $bypassViaEnv = in_array($bypassRaw, ['1', 'true', 'yes', 'y', 'on'], true);
+               $bypassPersistedDedupe = $bypassViaEnv || $ciEnv === 'development' || $isPrivateHost;
+
+               if ($bypassPersistedDedupe) {
+                    try {
+                         @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] persisted_dedupe_bypass_active: env={$ciEnv} app_base={$appBase}\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+               }
+
+               // Persistent idempotency: only send if updated_dtm is newer than last sent time for this event.
+               try {
+                    if ($this->usesSubmissionTable() && ctype_digit((string)$submissionId)) {
+                         $subRow = $db->table('form_submissions')->select('header, updated_dtm')->where('id', (int)$submissionId)->get()->getRowArray();
+                         $persistHeader = [];
+                         if (!empty($subRow['header'])) {
+                              $persistHeader = is_array($subRow['header']) ? $subRow['header'] : (json_decode($subRow['header'], true) ?: []);
+                         }
+                         $sentEvents = isset($persistHeader['email_sent_events']) && is_array($persistHeader['email_sent_events']) ? $persistHeader['email_sent_events'] : [];
+                         $evt = (string)($tmpl['event_key'] ?? '');
+                         $updatedDtm = $subRow['updated_dtm'] ?? null;
+                         $lastSentTime = '';
+                         if (isset($sentEvents[$evt])) {
+                              $lastSentTime = $sentEvents[$evt];
+                         } elseif (is_array($sentEvents) && in_array($evt, $sentEvents, true)) {
+                              // legacy array format, treat as sent but no timestamp
+                              $lastSentTime = '';
+                         }
+
+                         // check for PDF de-duplication: skip if the header already held the same file id
+                         $currentPdf = null;
+                         if (is_array($header) && !empty($header['pdf_file_id'])) {
+                              $currentPdf = (string)$header['pdf_file_id'];
+                         }
+                         $sentPdf = isset($persistHeader['last_pdf_id']) ? (string)$persistHeader['last_pdf_id'] : null;
+                         if (!$bypassPersistedDedupe && $currentPdf && $sentPdf && $currentPdf === $sentPdf) {
+                              try {
+                                   @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] persisted_skip_same_pdf: form_id={$formId} submission={$submissionId} pdf={$currentPdf}\n", FILE_APPEND);
+                              } catch (\Throwable $__dbg) {
+                              }
+                              return;
+                         }
+
+                         // If lastSentTime exists and updated_dtm is not newer, skip sending
+                         if (!$bypassPersistedDedupe && $evt !== '' && $lastSentTime && $updatedDtm && strtotime($updatedDtm) <= strtotime($lastSentTime)) {
+                              try {
+                                   @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] persisted_skip (not modified): form_id={$formId} submission={$submissionId} template={$evt} updated_dtm={$updatedDtm} last_sent={$lastSentTime}\n", FILE_APPEND);
+                              } catch (\Throwable $__dbg) {
+                              }
+                              return;
+                         }
+                    }
+               } catch (\Throwable $__persistErr) {
+                    log_message('error', 'triggerSubmissionEmailOnSave: persistent-skip check failed: ' . $__persistErr->getMessage());
+               }
+
+               // Short-lived dedupe + PDF-aware defer
+               $forceSend = !empty($payload['force']);
+               if (!$forceSend && is_array($header) && !empty($payload['pdf_file_id']) && empty($header['pdf_file_id'])) {
+                    $forceSend = true;
+                    try {
+                         @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] forcing_send_due_to_new_pdf header_before=" . json_encode($header) . " payload_pdf=" . json_encode($payload['pdf_file_id']) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+               }
+
+               $templateRefsPdf = (stripos($tmpl['html_template'] ?? '', '{{pdf_file_name') !== false)
+                    || (stripos((string)($tmpl['variables'] ?? ''), 'pdf_file_name') !== false);
+
+               $recentInterval = 60;
+               if (!$forceSend && !$templateRefsPdf && !empty($evt ?? '') && !empty($lastSentTime ?? '')) {
+                    $elapsed = time() - strtotime($lastSentTime);
+                    if ($elapsed >= 0 && $elapsed < $recentInterval) {
+                         try {
+                              @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] short_term_skip: form_id={$formId} submission={$submissionId} template={$evt} elapsed={$elapsed}s\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+                         return;
+                    }
+               }
+
+               $pdfInPayload = !empty($payload['pdf_file_id'])
+                    || (is_array($header) && (!empty($header['pdf_file_id']) || !empty($header['pdf_file_name'])));
+
+               if ($templateRefsPdf && !$forceSend && !$pdfInPayload) {
+                    try {
+                         $cols = [];
+                         try {
+                              $cols = $db->getFieldNames('files');
+                         } catch (\Throwable $__cols) {
+                              $cols = [];
+                         }
+
+                         $qb = $db->table('files')->select('*');
+                         $usedCond = false;
+                         if (in_array('form_id', $cols, true) && $formId > 0) {
+                              $qb->where('form_id', (int)$formId);
+                              $usedCond = true;
+                         }
+                         if (in_array('submission_id', $cols, true) && ctype_digit((string)$submissionId)) {
+                              $qb->where('submission_id', (int)$submissionId);
+                              $usedCond = true;
+                         }
+                         if (in_array('file_name', $cols, true)) {
+                              $qb->like('file_name', 'submission_');
+                         }
+
+                         if ($usedCond) {
+                              if (in_array('createdDTM', $cols, true)) $qb->orderBy('createdDTM', 'DESC');
+                              elseif (in_array('created_at', $cols, true)) $qb->orderBy('created_at', 'DESC');
+                              elseif (in_array('file_id', $cols, true)) $qb->orderBy('file_id', 'DESC');
+                              $rowCandidate = $qb->limit(1)->get()->getRowArray();
+                              if (!empty($rowCandidate)) {
+                                   $pdfInPayload = true;
+                                   if (isset($rowCandidate['file_id'])) {
+                                        $payload['pdf_file_id'] = (int)$rowCandidate['file_id'];
+                                   } elseif (isset($rowCandidate['f_id'])) {
+                                        $payload['pdf_file_id'] = (int)$rowCandidate['f_id'];
+                                   } elseif (isset($rowCandidate['id'])) {
+                                        $payload['pdf_file_id'] = (int)$rowCandidate['id'];
+                                   }
+                                   try {
+                                        @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] found_pdf_in_files_table: form_id={$formId} submission={$submissionId} candidate=" . json_encode([$rowCandidate['file_name'] ?? null]) . "\n", FILE_APPEND);
+                                   } catch (\Throwable $__dbg) {
+                                   }
+                              }
+                         }
+
+                         if (! $pdfInPayload) {
+                              @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] deferred_for_missing_pdf: form_id={$formId} submission={$submissionId} template=" . ($tmpl['event_key'] ?? 'NULL') . " header_pdf_present=" . ($pdfInPayload ? 'Y' : 'N') . "\n", FILE_APPEND);
+                              return;
+                         }
+                    } catch (\Throwable $__dbg) {
+                         try {
+                              @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] deferred_for_missing_pdf(fallback-exception): form_id={$formId} submission={$submissionId}\n", FILE_APPEND);
+                         } catch (\Throwable $__e) {
+                         }
+                         return;
+                    }
+               }
+
+               // Dedupe lock
+               try {
+                    $cacheKey = 'email_send_lock_' . (int)$formId . '_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)$submissionId) . '_' . ($tmpl['event_key'] ?? 'generic');
+                    $cache = \Config\Services::cache();
+
+                    $locked = false;
+                    try {
+                         if ($cache->get($cacheKey)) $locked = true;
+                    } catch (\Throwable $__c) {
+                         $locked = false;
+                    }
+
+                    $lockDir = WRITEPATH . 'email_locks';
+                    $lockFile = $lockDir . '/' . $cacheKey . '.lock';
+                    if (! $locked && is_dir($lockDir) && file_exists($lockFile) && (filemtime($lockFile) + 120) > time()) {
+                         $locked = true;
+                    }
+
+                    if (! $forceSend && $locked) {
+                         @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] dedupe_skip: form_id={$formId} submission={$submissionId} template=" . ($tmpl['event_key'] ?? 'NULL') . " (locked)\n", FILE_APPEND);
+                         return;
+                    }
+
+                    try {
+                         $cache->save($cacheKey, 1, 120);
+                    } catch (\Throwable $__ignore) {
+                    }
+                    try {
+                         if (!is_dir($lockDir)) @mkdir($lockDir, 0755, true);
+                         @file_put_contents($lockFile, (string)time());
+                    } catch (\Throwable $__ignore) {
+                    }
+               } catch (\Throwable $__cacheErr) {
+                    // ignore cache/storage failures — best-effort only
+               }
+
+               // Prepare variables for template replacement
+               $vars = [];
+               $vars['submission_id'] = (string)$submissionId;
+               $vars['submission_uuid'] = is_string($submissionId) ? $submissionId : (string)$submissionId;
+               $vars['form_id'] = (int)$formId;
+               $vars['created_dtm'] = $createdDtm ?? date('Y-m-d H:i:s');
+
+               $formName = '';
+               try {
+                    $formRow = $db->table('forms')->select('form_name')->where('id', (int)$formId)->get()->getRowArray();
+                    $formName = trim((string)($formRow['form_name'] ?? ''));
+               } catch (\Throwable $__formEx) {
+                    $formName = '';
+               }
+               $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
+
+               // flow detection (kept as-is)
+               $isItChecklistFlow = (
+                    strpos($eventKeyLc, 'it_checklist') !== false
+                    || strpos($eventKeyLc, 'it-checklist') !== false
+                    || strpos($eventKeyLc, 'it checklist') !== false
+                    || strpos($eventKeyLc, 'itchecklistformdata') !== false
+               );
+
+               $isLabDailyChecklistFlow = (
+                    strpos($eventKeyLc, 'labdailychecklistformdata') !== false
+                    || strpos($eventKeyLc, 'labdailychecklist') !== false
+                    || strpos($eventKeyLc, 'lab_daily_checklist') !== false
+                    || strpos($eventKeyLc, 'phlebotomychecklistformdata') !== false
+                    || strpos($eventKeyLc, 'phlebotomy_checklist') !== false
+                    || stripos($formName, 'phlebotomy') !== false
+                    || stripos($formName, 'lab daily') !== false
+               );
+
+               $isLabWeeklyChecklistFlow = (
+                    strpos($eventKeyLc, 'labweeklychecklistformdata') !== false
+                    || strpos($eventKeyLc, 'labweeklychecklist') !== false
+                    || strpos($eventKeyLc, 'lab_weekly_checklist') !== false
+                    || stripos($formName, 'lab weekly') !== false
+               );
+
+
+               $isCCTVChecklistFlow = (
+                    strpos($eventKeyLc, 'cctvchecklistformdata') !== false
+                    || strpos($eventKeyLc, 'cctvchecklist') !== false
+                    || strpos($eventKeyLc, 'cctv_inspection') !== false
+                    || stripos($formName, 'cctv_inspection') !== false
+               );
+
+               $isPhlebotomyManagerChecklistFlow = (
+                    strpos($eventKeyLc, 'phlebotomymanagerchecklistformdata') !== false
+                    || strpos($eventKeyLc, 'phlebotomymanagerchecklist') !== false
+                    || strpos($eventKeyLc, 'phlebotomy_manager_checklist') !== false
+                    || stripos($formName, 'phlebotomy manager') !== false
+               );
+
+
+               if ($isLabDailyChecklistFlow && (!isset($tmpl['event_key']) || strtolower(trim((string)$tmpl['event_key'])) !== 'labdailychecklistformdata')) {
+                    $maybe = $db->table('email_templates')->where('event_key', 'labDailyChecklistFormData')->get()->getRowArray();
+                    if ($maybe) {
+                         $tmpl = $maybe;
+                         $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
+                    }
+               }
+               if ($isLabWeeklyChecklistFlow && (!isset($tmpl['event_key']) || strtolower(trim((string)$tmpl['event_key'])) !== 'labweeklychecklistformdata')) {
+                    $maybe = $db->table('email_templates')->where('event_key', 'labWeeklyChecklistFormData')->get()->getRowArray();
+                    if ($maybe) {
+                         $tmpl = $maybe;
+                         $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
+                    }
+               }
+               if ($isCCTVChecklistFlow && (!isset($tmpl['event_key']) || strtolower(trim((string)$tmpl['event_key'])) !== 'cctvchecklistformdata')) {
+                    $maybe = $db->table('email_templates')->where('event_key', 'cctvchecklistformdata')->get()->getRowArray();
+                    if ($maybe) {
+                         $tmpl = $maybe;
+                         $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
+                    }
+               }
+
+               if ($isPhlebotomyManagerChecklistFlow && (!isset($tmpl['event_key']) || strtolower(trim((string)$tmpl['event_key'])) !== 'phlebotomymanagerchecklistformdata')) {
+                    $maybe = $db->table('email_templates')->where('event_key', 'phlebotomymanagerchecklistformdata')->get()->getRowArray();
+                    if ($maybe) {
+                         $tmpl = $maybe;
+                         $eventKeyLc = strtolower(trim((string)($tmpl['event_key'] ?? '')));
+                    }
+               }
+
+               $isMaintenanceForm = (stripos($formName, 'maintenance') !== false);
+               if (!$isMaintenanceForm) {
+                    if (strpos($eventKeyLc, 'branding') !== false) {
+                         $isMaintenanceForm = false;
+                    } elseif (strpos($eventKeyLc, 'maintenance') !== false) {
+                         $isMaintenanceForm = true;
+                    }
+               }
+
+               $vars['form_name'] = $formName;
+               $vars['pdf_type'] = $isMaintenanceForm ? 'maintenance' : 'checklist';
+               $vars['is_maintenance_form'] = $isMaintenanceForm ? '1' : '0';
+
+               $sidForRoute = rawurlencode((string)$submissionId);
+               $vars['pdf_download_url'] = $isMaintenanceForm
+                    ? base_url('pdf/maintenance_download/' . $sidForRoute)
+                    : base_url('pdf/download/' . $sidForRoute);
+               $vars['pdf_backend_download_url'] = $isMaintenanceForm
+                    ? base_url('backend/pdf/maintenance_download/' . $sidForRoute)
+                    : base_url('backend/pdf/download/' . $sidForRoute);
+
+               if (is_array($header)) {
+                    $vars['branch_id'] = $header['branch_id'] ?? null;
+                    $vars['branch_manager'] = $header['branch_manager'] ?? null;
+                    if (!($isItChecklistFlow || $isLabDailyChecklistFlow || $isLabWeeklyChecklistFlow)) {
+                         $vars['branch_manager_email'] = $header['branch_manager_email'] ?? null;
+                         $vars['branch_email'] = $header['branch_email'] ?? null;
+                    }
+                    $vars['contact'] = $header['contact'] ?? null;
+                    $vars['centre_name'] = $header['centre_name'] ?? $header['branch_name'] ?? null;
+
+                    $bmRaw = $header['branch_manager'] ?? null;
+                    $vars['branch_manager_name'] = $bmRaw ? preg_replace('/\s*\([^)]*\)$/', '', trim((string)$bmRaw)) : null;
+                    $vars['branch_name'] = $vars['centre_name'] ?? ($header['branch_name'] ?? null);
+                    $vars['name'] = $vars['branch_manager_name'] ?? $vars['branch_manager'] ?? null;
+
+                    $vars['audited_by'] = isset($header['audited_by']) ? trim((string)$header['audited_by']) : null;
+                    $vars['audited_by_mobile'] = isset($header['audited_by_mobile']) ? trim((string)$header['audited_by_mobile']) : null;
+                    $vars['pdf_file_name'] = $header['pdf_file_name'] ?? null;
+               }
+
+               // Check for frontend-uploaded PDF file id
+               $pdfFileId = null;
+               if (!empty($payload['pdf_file_id'])) {
+                    $pdfFileId = (int)$payload['pdf_file_id'];
+               } elseif (is_array($header) && !empty($header['pdf_file_id'])) {
+                    $pdfFileId = (int)$header['pdf_file_id'];
+               }
+
+               $attachmentPath = null;
+               if ($pdfFileId && $pdfFileId > 0) {
+                    try {
+                         $db = \Config\Database::connect();
+                         $hasFileId = $this->tableHasColumn('files', 'file_id');
+                         $hasFid = $this->tableHasColumn('files', 'f_id');
+                         $hasId = $this->tableHasColumn('files', 'id');
+
+                         $f = null;
+                         if ($hasFileId || $hasFid || $hasId) {
+                              $qb = $db->table('files')->select('*');
+                              $qb->groupStart();
+                              if ($hasFileId) $qb->where('file_id', $pdfFileId);
+                              if ($hasFid) {
+                                   if ($hasFileId) $qb->orWhere('f_id', $pdfFileId);
+                                   else $qb->where('f_id', $pdfFileId);
+                              }
+                              if ($hasId) {
+                                   if ($hasFileId || $hasFid) $qb->orWhere('id', $pdfFileId);
+                                   else $qb->where('id', $pdfFileId);
+                              }
+                              $qb->groupEnd()->limit(1);
+                              $f = $qb->get()->getRowArray();
+                         } else {
+                              log_message('warning', 'triggerSubmissionEmailOnSave: files table missing file_id/f_id/id columns');
+                         }
+
+                         try {
+                              @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] resolved_file_row_for_pdf_file_id={$pdfFileId} row=" . json_encode($f) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+
+                         if ($f) {
+                              try {
+                                   $pkCol = null;
+                                   if (isset($f['file_id'])) $pkCol = 'file_id';
+                                   elseif (isset($f['f_id'])) $pkCol = 'f_id';
+                                   elseif (isset($f['id'])) $pkCol = 'id';
+
+                                   $toUpdate = [];
+                                   if ($pkCol && empty($f['form_id']) && !empty($formId)) $toUpdate['form_id'] = (int)$formId;
+                                   if ($pkCol && empty($f['submission_id']) && ctype_digit((string)$submissionId)) $toUpdate['submission_id'] = (int)$submissionId;
+
+                                   if (!empty($toUpdate) && $pkCol) {
+                                        try {
+                                             $db->table('files')->where($pkCol, $f[$pkCol])->update($toUpdate);
+                                        } catch (\Throwable $__upd) {
+                                        }
+                                   }
+                              } catch (\Throwable $__link) {
+                              }
+
+                              $fileName = $f['file_name'] ?? $f['filename'] ?? $f['name'] ?? null;
+                              $pathCol = $f['path'] ?? $f['full_path'] ?? null;
+
+                              if ($fileName) {
+                                   $candidate = WRITEPATH . 'uploads/secure_files/' . $fileName;
+                                   if (is_file($candidate)) {
+                                        $attachmentPath = $candidate;
+                                   }
+                              }
+                              if (!$attachmentPath && $pathCol && is_file($pathCol)) {
+                                   $attachmentPath = $pathCol;
+                              }
+                         }
+
+                         if (!$attachmentPath && is_array($header) && !empty($header['pdf_file_name'])) {
+                              $candidateHeader = WRITEPATH . 'uploads/secure_files/' . basename($header['pdf_file_name']);
+                              if (is_file($candidateHeader)) {
+                                   $attachmentPath = $candidateHeader;
+                                   try {
+                                        @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] attached_via_header_pdf_file_name={$candidateHeader}\n", FILE_APPEND);
+                                   } catch (\Throwable $__dbg) {
+                                   }
+                              }
+                         }
+                    } catch (\Throwable $e) {
+                         log_message('error', 'triggerSubmissionEmailOnSave: failed to resolve pdf file: ' . $e->getMessage());
+                    }
+               }
+
+               if (!empty($pdfFileId) && !$attachmentPath) {
+                    try {
+                         $diag = [
+                              'pdf_file_id' => $pdfFileId,
+                              'header_pdf_file_name' => $header['pdf_file_name'] ?? null,
+                              'resolved_db_row' => isset($f) ? $f : null,
+                              'candidate_header_path_exists' => (!empty($header['pdf_file_name']) && is_file(WRITEPATH . 'uploads/secure_files/' . basename($header['pdf_file_name']))) ? 'Y' : 'N',
+                              'secure_dir' => WRITEPATH . 'uploads/secure_files/',
+                         ];
+                         @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] pdf_attach_missing: " . json_encode($diag) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+
+                    try {
+                         $cols = [];
+                         try {
+                              $cols = $db->getFieldNames('files');
+                         } catch (\Throwable $__c) {
+                              $cols = [];
+                         }
+                         $qb = $db->table('files')->select('*');
+                         $usedCond = false;
+                         if (in_array('form_id', $cols, true) && $formId > 0) {
+                              $qb->where('form_id', (int)$formId);
+                              $usedCond = true;
+                         }
+                         if (in_array('submission_id', $cols, true) && ctype_digit((string)$submissionId)) {
+                              $qb->where('submission_id', (int)$submissionId);
+                              $usedCond = true;
+                         }
+                         if (in_array('file_name', $cols, true)) {
+                              $qb->like('file_name', 'submission_');
+                         }
+                         if ($usedCond) {
+                              if (in_array('createdDTM', $cols, true)) $qb->orderBy('createdDTM', 'DESC');
+                              elseif (in_array('created_at', $cols, true)) $qb->orderBy('created_at', 'DESC');
+                              elseif (in_array('file_id', $cols, true)) $qb->orderBy('file_id', 'DESC');
+                              $rowCandidate = $qb->limit(1)->get()->getRowArray();
+                              if ($rowCandidate) {
+                                   $candidateName = $rowCandidate['file_name'] ?? $rowCandidate['filename'] ?? null;
+                                   if ($candidateName) {
+                                        $candidatePath = WRITEPATH . 'uploads/secure_files/' . basename($candidateName);
+                                        if (is_file($candidatePath)) {
+                                             $attachmentPath = $candidatePath;
+                                             try {
+                                                  @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] pdf_attach_fallback_used candidate=" . basename($candidatePath) . "\n", FILE_APPEND);
+                                             } catch (\Throwable $__dbg) {
+                                             }
+                                        }
+                                   }
+                              }
+                         }
+                    } catch (\Throwable $__fb) {
+                         log_message('error', 'triggerSubmissionEmailOnSave fallback file lookup failed: ' . $__fb->getMessage());
+                    }
+               }
+
+               // Resolve recipients (kept same behavior)
+               $recipients = [];
+               $customTo = '';
+               if ($isItChecklistFlow) {
+                    $customTo = trim((string)(getenv('IT_CHECKLIST_TO_EMAIL') ?: ''));
+               } elseif ($isLabDailyChecklistFlow) {
+                    $customTo = trim((string)(getenv('LAB_MANAGER_DAILY_CHECKLIST_TO_EMAIL') ?: ''));
+               } elseif ($isLabWeeklyChecklistFlow) {
+                    $customTo = trim((string)(getenv('LAB_MANAGER_WEEKLY_CHECKLIST_TO_EMAIL') ?: ''));
+               } elseif ($isCCTVChecklistFlow) {
+                    $customTo = trim((string)(getenv('CCTV_MANAGER_CHECKLIST_TO_EMAIL') ?: ''));
+               } elseif ($isPhlebotomyManagerChecklistFlow) {
+                    $customTo = trim((string)(getenv('PHLEBOTOMY_MANAGER_CHECKLIST_TO_EMAIL') ?: ''));
+               }
+               if ($customTo !== '') {
+                    $candidateEmails = preg_split('/[\s,;]+/', $customTo);
+                    $invalidCustomEmails = [];
+                    foreach ($candidateEmails as $candidateEmail) {
+                         $candidateEmail = trim((string)$candidateEmail);
+                         if ($candidateEmail === '') {
+                              continue;
+                         }
+                         if (filter_var($candidateEmail, FILTER_VALIDATE_EMAIL)) {
+                              $recipients[] = ['email' => $candidateEmail, 'name' => ''];
+                         } else {
+                              $invalidCustomEmails[] = $candidateEmail;
+                         }
+                    }
+                    if (empty($recipients) && !empty($invalidCustomEmails)) {
+                         log_message('error', 'triggerSubmissionEmailOnSave: custom checklist TO email not configured/invalid: ' . implode(', ', $invalidCustomEmails));
+                    }
+               }
+
+               $isSpecialChecklistFlow = ($isItChecklistFlow || $isLabDailyChecklistFlow || $isLabWeeklyChecklistFlow || $isCCTVChecklistFlow || $isPhlebotomyManagerChecklistFlow);
+               if (!$isSpecialChecklistFlow) {
+                    if (is_array($header) && !empty($header['branch_id'])) {
+                         try {
+                              $branchModel = model(\App\Models\BranchModel::class);
+                              $b = $branchModel->getBranchDetails($header['branch_id']);
+                              try {
+                                   @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] branch_lookup: " . json_encode([$header['branch_id'], $b]) . "\n", FILE_APPEND);
+                              } catch (\Throwable $__dbg) {
+                              }
+                              if (empty($vars['branch_manager_email']) && !empty($b['branch_manager_email'])) {
+                                   $vars['branch_manager_email'] = $b['branch_manager_email'];
+                              }
+                              if (empty($vars['branch_email']) && !empty($b['branch_email'])) {
+                                   $vars['branch_email'] = $b['branch_email'];
+                              }
+                              if (!empty($b['branch_manager_email'])) $recipients[] = ['email' => $b['branch_manager_email'], 'name' => $b['branch_manager_name'] ?? ''];
+                              if (!empty($b['branch_email'])) $recipients[] = ['email' => $b['branch_email'], 'name' => $b['branch_name'] ?? ''];
+                         } catch (\Throwable $e) {
+                              log_message('error', 'triggerSubmissionEmailOnSave: branch lookup failed: ' . $e->getMessage());
+                         }
+                    }
+
+                    if (empty($recipients) && is_array($header)) {
+                         if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
+                              $recipients[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
+                         }
+                         if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
+                              $recipients[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
+                         }
+                    }
+
+                    if (is_array($header)) {
+                         $explicit = [];
+                         if (!empty($header['branch_manager_email']) && filter_var($header['branch_manager_email'], FILTER_VALIDATE_EMAIL)) {
+                              $explicit[] = ['email' => $header['branch_manager_email'], 'name' => $header['branch_manager'] ?? ''];
+                         }
+                         if (!empty($header['branch_email']) && filter_var($header['branch_email'], FILTER_VALIDATE_EMAIL)) {
+                              $explicit[] = ['email' => $header['branch_email'], 'name' => $header['centre_name'] ?? ''];
+                         }
+                         if (!empty($explicit)) {
+                              $all = array_merge($recipients, $explicit);
+                              $seen = [];
+                              $recipients = [];
+                              foreach ($all as $row) {
+                                   $em = trim((string)($row['email'] ?? ''));
+                                   if (! $em || ! filter_var($em, FILTER_VALIDATE_EMAIL)) continue;
+                                   if (in_array($em, $seen, true)) continue;
+                                   $seen[] = $em;
+                                   $recipients[] = ['email' => $em, 'name' => $row['name'] ?? ''];
+                              }
+                         }
+                    }
+               }
+
+               if (!$isItChecklistFlow && empty($recipients) && !empty($tmpl['cc_emails'])) {
+                    $parts = is_array($tmpl['cc_emails']) ? $tmpl['cc_emails'] : preg_split('/[,;\s]+/', (string) $tmpl['cc_emails']);
+                    foreach ($parts as $p) {
+                         $p = trim((string)$p);
+                         if ($p && filter_var($p, FILTER_VALIDATE_EMAIL)) {
+                              $recipients[] = ['email' => $p, 'name' => ''];
+                         }
+                    }
+                    try {
+                         @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] fallback_to_template_ccs: " . json_encode($parts) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+               }
+
+               if (empty($recipients)) {
+                    log_message('debug', "triggerSubmissionEmailOnSave: no recipients for form_id={$formId}, submission={$submissionId}");
+                    try {
+                         @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] no_recipients_found template_ccs=" . ($tmpl['cc_emails'] ?? 'NULL') . " header=" . json_encode($header) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+                    return;
+               }
+
+               // send a single message; first address becomes the primary To recipient, others are CC'd
+               $emailController = new \App\Controllers\EmailController();
+               $valid = [];
+               foreach ($recipients as $r) {
+                    $em = trim((string)($r['email'] ?? ''));
+                    if ($em && filter_var($em, FILTER_VALIDATE_EMAIL)) {
+                         $valid[] = $em;
+                    }
+               }
+
+               // sanitizer closure for diagnostic-vars
+               $maskKeys = '/token|secret|password|auth|private|pvk/i';
+               $sanitizeVars = function ($arr) use ($maskKeys) {
+                    if (!is_array($arr)) return $arr;
+                    $out = [];
+                    foreach ($arr as $k => $v) {
+                         if (preg_match($maskKeys, (string)$k)) {
+                              $out[$k] = '[REDACTED]';
+                         } else {
+                              if (is_scalar($v)) {
+                                   $out[$k] = $v;
+                              } elseif (is_array($v)) {
+                                   $out[$k] = array_slice($v, 0, 20);
+                              } else {
+                                   $out[$k] = gettype($v);
+                              }
+                         }
+                    }
+                    return $out;
+               };
+
+               if (!empty($valid)) {
+                    $toEmail = array_shift($valid);
+                    $toName = null;
+                    $ccList = !empty($valid) ? implode(',', $valid) : null;
+
+                    try {
+                         $vars['checklist_id'] = $submissionId;
+                         if ($isSpecialChecklistFlow) {
+                              unset($vars['branch_manager_email'], $vars['branch_email']);
+                              $vars['include_branch_cc'] = '0';
+                              $ccList = null;
+                         } else {
+                              $vars['include_branch_cc'] = '1';
+                         }
+
+                         $res = $emailController->sendTemplate($tmpl['event_key'], $toEmail, $toName, $vars, null, $ccList, null);
+                         $resText = strtolower(trim((string)$res));
+                         $emailSentOk = ($resText === 'email sent' || strpos($resText, 'email sent') !== false);
+
+                         log_message('info', "triggerSubmissionEmailOnSave: template={$tmpl['event_key']} to={$toEmail} cc={$ccList} result={$res}");
+                         try {
+                              @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] send_attempt: to={$toEmail} cc={$ccList} res=" . substr((string)$res, 0, 200) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+
+                         if (!$emailSentOk) {
+                              $diag = [
+                                   'when' => date('c'),
+                                   'template_event_key' => $tmpl['event_key'] ?? null,
+                                   'to' => $toEmail,
+                                   'cc' => $ccList,
+                                   'result_raw' => is_scalar($res) ? substr((string)$res, 0, 4000) : gettype($res),
+                                   'vars_preview' => $sanitizeVars($vars),
+                                   'attachment_path' => isset($attachmentPath) ? $attachmentPath : null,
+                                   'pdf_file_id' => isset($pdfFileId) ? $pdfFileId : null,
+                                   'cacheKey' => $cacheKey,
+                                   'lockFile' => $lockFile,
+                              ];
+                              try {
+                                   @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] send_non_ok_diagnostic: " . json_encode($diag, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND);
+                              } catch (\Throwable $__dbg) {
+                              }
+                              log_message('error', 'triggerSubmissionEmailOnSave: send returned non-ok result for template ' . ($tmpl['event_key'] ?? 'NULL') . ' to ' . $toEmail);
+                         }
+                    } catch (\Throwable $e) {
+                         $emailSentOk = false;
+
+                         $diagEx = [
+                              'when' => date('c'),
+                              'template_event_key' => $tmpl['event_key'] ?? null,
+                              'to' => $toEmail ?? null,
+                              'cc' => $ccList ?? null,
+                              'exception_message' => $e->getMessage(),
+                              'exception_trace' => method_exists($e, 'getTraceAsString') ? substr($e->getTraceAsString(), 0, 5000) : null,
+                              'vars_preview' => $sanitizeVars($vars),
+                              'attachment_path' => isset($attachmentPath) ? $attachmentPath : null,
+                              'pdf_file_id' => isset($pdfFileId) ? $pdfFileId : null,
+                              'cacheKey' => $cacheKey,
+                              'lockFile' => $lockFile,
+                         ];
+                         log_message('error', 'triggerSubmissionEmailOnSave: sendTemplate threw exception: ' . $e->getMessage());
+                         try {
+                              @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] send_failed_exception: " . json_encode($diagEx, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND);
+                         } catch (\Throwable $__dbg) {
+                         }
+                    }
+               }
+
+               // If send failed (or no valid send happened), release short-term lock and stop.
+               if (!$emailSentOk) {
+                    try {
+                         if ($cache && $cacheKey !== '') {
+                              $cache->delete($cacheKey);
+                         }
+                    } catch (\Throwable $__unlockCache) {
+                    }
+                    try {
+                         if ($lockFile !== '' && is_file($lockFile)) {
+                              @unlink($lockFile);
+                         }
+                    } catch (\Throwable $__unlockFile) {
+                    }
+
+                    try {
+                         $persistDiag = [
+                              'when' => date('c'),
+                              'form_id' => $formId,
+                              'submission' => $submissionId,
+                              'template' => $tmpl['event_key'] ?? null,
+                              'cacheKey' => $cacheKey,
+                              'lockFile' => $lockFile,
+                              'attachmentPath' => isset($attachmentPath) ? $attachmentPath : null,
+                              'pdf_file_id' => isset($pdfFileId) ? $pdfFileId : null,
+                         ];
+                         @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] persisted_skip_send_failed: " . json_encode($persistDiag, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                    }
+
+                    return;
+               }
+
+               // Persist a sent-marker into `form_submissions.header.email_sent_events`
+               try {
+                    if ($this->usesSubmissionTable() && ctype_digit((string)$submissionId)) {
+                         $row = $db->table('form_submissions')->select('header')->where('id', (int)$submissionId)->get()->getRowArray();
+                         $hdr = [];
+                         if (!empty($row['header'])) {
+                              $hdr = is_array($row['header']) ? $row['header'] : (json_decode($row['header'], true) ?: []);
+                         }
+
+                         $sent = isset($hdr['email_sent_events']) && is_array($hdr['email_sent_events']) ? $hdr['email_sent_events'] : [];
+                         $evt = (string)($tmpl['event_key'] ?? '');
+                         if ($evt !== '') {
+                              $sent[$evt] = date('Y-m-d H:i:s');
+                              $hdr['email_sent_events'] = $sent;
+
+                              if (is_array($header) && !empty($header['pdf_file_id'])) {
+                                   $hdr['last_pdf_id'] = $header['pdf_file_id'];
+                              }
+
+                              $upd = ['header' => json_encode($hdr)];
+                              if ($this->tableHasColumn('form_submissions', 'updated_dtm')) $upd['updated_dtm'] = date('Y-m-d H:i:s');
+                              $db->table('form_submissions')->where('id', (int)$submissionId)->update($upd);
+                              try {
+                                   @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] persisted_mark: form_id={$formId} submission={$submissionId} template={$evt}\n", FILE_APPEND);
+                              } catch (\Throwable $__dbg) {
+                              }
+                         }
+                    }
+               } catch (\Throwable $__persistEx) {
+                    log_message('error', 'triggerSubmissionEmailOnSave: failed to persist sent-marker: ' . $__persistEx->getMessage());
+               }
+          } catch (\Throwable $e) {
+               // Top-level unexpected error: include trace for diagnostics
+               $msg = $e->getMessage();
+               $trace = method_exists($e, 'getTraceAsString') ? substr($e->getTraceAsString(), 0, 5000) : null;
+               log_message('error', 'triggerSubmissionEmailOnSave: unexpected error: ' . $msg);
+               try {
+                    @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] unexpected_error: msg=" . $msg . " trace=" . ($trace ?? '') . "\n", FILE_APPEND);
+               } catch (\Throwable $__dbg) {
+               }
+          }
+     }
+
+     // Quick admin API: re-run the email trigger for an existing submission (best-effort)
+     // POST /api/dynamic-form/{id}/resend-email
+     public function resendEmail($submissionId)
+     {
+          $user = $this->validateAuthorizationNew();
+          if ($user instanceof \CodeIgniter\HTTP\ResponseInterface) return $user;
+
+          $sid = is_string($submissionId) ? trim($submissionId) : (string)$submissionId;
+          if ($sid === '') return $this->respond(['message' => 'submission_id required'], 400);
+
+          $db = \Config\Database::connect();
+          $useSubmissionTable = $this->usesSubmissionTable();
+
+          try {
+               $submission = null;
+               if ($useSubmissionTable && ctype_digit($sid)) {
+                    $submission = $db->table('form_submissions')->where('id', (int)$sid)->get()->getRowArray();
+               }
+               if (!$submission) {
+                    return $this->respond(['message' => 'Submission not found'], 404);
+               }
+
+               $formId = isset($submission['form_id']) ? (int)$submission['form_id'] : 0;
+               $header = null;
+               if (!empty($submission['header'])) {
+                    $h = $submission['header'];
+                    if (is_string($h)) $header = json_decode($h, true) ?: null;
+                    elseif (is_array($h)) $header = $h;
+               }
+
+               // Trigger (best-effort, non-blocking)
+               try {
+                    try {
+                         file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] resendEmail_invoking_trigger: form_id={$formId} submission={$sid} header=" . json_encode($header) . "\n", FILE_APPEND);
+                    } catch (\Throwable $__dbg) {
+                         // ignore logging failures
+                    }
+                    // Admin-initiated resend should bypass short TTL dedupe
+                    $this->triggerSubmissionEmailOnSave((int)$formId, $sid, $header, $submission['created_dtm'] ?? null, ['force' => true]);
+               } catch (\Throwable $e) {
+                    log_message('error', 'resendEmail trigger failed: ' . $e->getMessage());
+                    return $this->respond(['message' => 'Trigger failed', 'error' => $e->getMessage()], 500);
+               }
+
+               return $this->respond(['message' => 'Trigger scheduled'], 200);
+          } catch (\Throwable $e) {
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     // GET /api/dynamic-form/{id}/debug - admin helper to inspect a submission's header, attached pdf and branch lookup
+     public function debugSubmission($submissionId)
+     {
+          $user = $this->validateAuthorizationNew();
+          if ($user instanceof \CodeIgniter\HTTP\ResponseInterface) return $user;
+
+          $sid = is_string($submissionId) ? trim($submissionId) : (string)$submissionId;
+          if ($sid === '') return $this->respond(['message' => 'submission_id required'], 400);
+
+          $db = \Config\Database::connect();
+          $useSubmissionTable = $this->usesSubmissionTable();
+
+          try {
+               $submission = null;
+               if ($useSubmissionTable && ctype_digit($sid)) {
+                    $submission = $db->table('form_submissions')->where('id', (int)$sid)->get()->getRowArray();
+               }
+               if (!$submission) return $this->respond(['message' => 'Submission not found'], 404);
+
+               $header = null;
+               if (!empty($submission['header'])) {
+                    $h = $submission['header'];
+                    if (is_string($h)) $header = json_decode($h, true) ?: null;
+                    elseif (is_array($h)) $header = $h;
+               }
+
+               $pdfFileId = $header['pdf_file_id'] ?? null;
+               $pdfFileName = $header['pdf_file_name'] ?? null;
+
+               $fileRow = null;
+               $fileExistsOnDisk = false;
+               if ($pdfFileId) {
+                    try {
+                         $cols = [];
+                         try {
+                              $cols = $db->getFieldNames('files');
+                         } catch (\Throwable $__cols) {
+                              $cols = [];
+                         }
+                         $qb = $db->table('files')->select('*');
+                         $added = false;
+                         $qb->groupStart();
+                         if (in_array('file_id', $cols, true)) {
+                              $qb->where('file_id', (int)$pdfFileId);
+                              $added = true;
+                         }
+                         if (in_array('f_id', $cols, true)) {
+                              $added ? $qb->orWhere('f_id', (int)$pdfFileId) : ($qb->where('f_id', (int)$pdfFileId) && $added = true);
+                         }
+                         if (in_array('id', $cols, true)) {
+                              $added ? $qb->orWhere('id', (int)$pdfFileId) : ($qb->where('id', (int)$pdfFileId) && $added = true);
+                         }
+                         $qb->groupEnd();
+                         if ($added) $fileRow = $qb->limit(1)->get()->getRowArray();
+                    } catch (\Throwable $e) {
+                         // ignore
+                    }
+               }
+
+               // check disk for filename from DB-row or header
+               $candidateName = $fileRow['file_name'] ?? $fileRow['filename'] ?? $pdfFileName ?? null;
+               if ($candidateName) {
+                    $candidatePath = WRITEPATH . 'uploads/secure_files/' . basename($candidateName);
+                    if (is_file($candidatePath)) $fileExistsOnDisk = true;
+               }
+
+               $branchInfo = null;
+               if (is_array($header) && !empty($header['branch_id'])) {
+                    try {
+                         $branchModel = model(\App\Models\BranchModel::class);
+                         $branchInfo = $branchModel->getBranchDetails($header['branch_id']);
+                    } catch (\Throwable $e) {
+                         // ignore
+                    }
+               }
+
+               return $this->respond([
+                    'submission' => $submission,
+                    'header' => $header,
+                    'pdf_file_id' => $pdfFileId,
+                    'pdf_file_name' => $pdfFileName,
+                    'file_row' => $fileRow,
+                    'file_exists_on_disk' => $fileExistsOnDisk,
+                    'branch_lookup' => $branchInfo,
+               ], 200);
+          } catch (\Throwable $e) {
+               return $this->respond(['message' => 'Failed: ' . $e->getMessage()], 500);
+          }
+     }
+
+     // Upload photo(s) for a given dynamic-form submission id (multipart/form-data)
+     public function uploadPhoto($submissionId)
+     {
+          $user = $this->validateAuthorizationNew();
+          if ($user instanceof \CodeIgniter\HTTP\ResponseInterface) return $user;
+
+          $empCode = $this->resolveAuthEmpCode($user);
+          if ($empCode === '') {
+               return $this->respond(['message' => 'Invalid token payload (emp_code missing)'], 401);
+          }
+
+          $sid = is_string($submissionId) ? trim($submissionId) : (string)$submissionId;
+          if ($sid === '') return $this->respond(['message' => 'submission_id required'], 400);
+
+          $useSubmissionTable = $this->usesSubmissionTable();
+          $db = \Config\Database::connect();
+          $uploadStart = microtime(true); // track upload start time for diagnostics
+          if ($useSubmissionTable && ctype_digit($sid)) {
+               $sub = $db->table('form_submissions')->where('id', (int)$sid)->get()->getRowArray();
+               if (!$sub) return $this->respond(['message' => 'Not found'], 404);
+          }
+
+          // Ensure the target exists in branding_checklists otherwise FK will fail when inserting photos
+          // Keep the original submission id separate so we do not lose it when we create a
+          // fallback branding_checklists row (which may get a different id). Photos will be
+          // saved against $photoTargetId while email triggers and submission updates use
+          // the original submission id ($originalSid).
+          $originalSid = $sid;
+          $photoTargetId = (int)$sid;
+
+          $chkExists = $db->table('branding_checklists')->where('id', (int)$sid)->get()->getRowArray();
+          if (!$chkExists) {
+               // Try to see if this id refers to a form_submissions row (dynamic-form flow).
+               $sub = $db->table('form_submissions')->where('id', (int)$sid)->get()->getRowArray();
+               if ($sub) {
+                    // Create a minimal branding_checklists row so photos can be associated with a checklist.
+                    try {
+                         // Prefer to create the checklist with the same numeric id as the submission when possible
+                         $targetId = (int)$sid;
+                         $insertData = [
+                              'centre_name' => 'Imported from dynamic-form ' . $sid,
+                              'date_of_visit' => date('Y-m-d'),
+                              'visit_time' => date('H:i:s'),
+                              'created_by' => $sub['created_by'] ?? null,
+                              'status' => 'draft',
+                              'created_at' => date('Y-m-d H:i:s'),
+                         ];
+
+                         // Try to reserve the exact id if it's not already taken
+                         $newChkId = 0;
+                         try {
+                              $tryData = $insertData;
+                              if ($targetId > 0) $tryData['id'] = $targetId;
+                              $db->table('branding_checklists')->insert($tryData);
+                              // If we explicitly set id, insertID() may be 0; fall back to targetId
+                              $newChkId = (int)$db->insertID();
+                              if ($newChkId <= 0 && $targetId > 0) $newChkId = $targetId;
+                              log_message('debug', 'DynamicForm::uploadPhoto attempted create branding_checklist ' . $newChkId . ' (preferred id ' . $targetId . ') for submission ' . $sid);
+                         } catch (\Throwable $e) {
+                              // If inserting with explicit id failed (duplicate or otherwise), fall back to normal insert
+                              try {
+                                   $db->table('branding_checklists')->insert($insertData);
+                                   $newChkId = (int)$db->insertID();
+                                   log_message('debug', 'DynamicForm::uploadPhoto fallback created branding_checklist ' . $newChkId . ' for submission ' . $sid);
+                              } catch (\Throwable $e2) {
+                                   log_message('error', 'DynamicForm::uploadPhoto failed to create branding_checklist for submission ' . $sid . ': ' . $e2->getMessage());
+                                   return $this->respond(['message' => 'Failed to create checklist for submission: ' . $sid], 500);
+                              }
+                         }
+
+                         if ($newChkId > 0) {
+                              // Use the newly created checklist id for storing photos only
+                              $photoTargetId = $newChkId;
+                         } else {
+                              log_message('error', 'DynamicForm::uploadPhoto failed to determine new checklist id for submission ' . $originalSid);
+                              return $this->respond(['message' => 'Failed to create checklist for submission: ' . $originalSid], 500);
+                         }
+                    } catch (\Throwable $e) {
+                         log_message('error', 'DynamicForm::uploadPhoto exception creating branding_checklist for submission ' . $originalSid . ': ' . $e->getMessage());
+                         return $this->respond(['message' => 'Failed to create checklist for submission: ' . $originalSid], 500);
+                    }
+               } else {
+                    log_message('error', 'DynamicForm::uploadPhoto attempted for nonexistent checklist_id: ' . $originalSid);
+                    return $this->respond(['message' => 'Checklist not found for id: ' . $originalSid], 404);
+               }
+          }
+
+          $files = array_values($this->request->getFileMultiple('photos') ?? []);
+          $metas = $this->request->getPost('photos_meta') ?? [];
+          if (empty($files)) return $this->respond(['message' => 'No files uploaded'], 400);
+
+          $uploadPath = WRITEPATH . 'uploads/branding_photos';
+          if (!is_dir($uploadPath)) mkdir($uploadPath, 0755, true);
+
+          $saved = [];
+          $errors = [];
+          $allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+          $maxBytes = 2 * 1024 * 1024; // 2 MB
+
+          $photoModel = model(BrandingChecklistModel::class);
+
+          foreach ($files as $i => $file) {
+               if (!$file || !$file->isValid() || $file->hasMoved()) {
+                    $errors[] = "File #{$i} invalid or already moved";
+                    continue;
+               }
+
+               // basic server-side validation
+               if (!in_array($file->getClientMimeType(), $allowedTypes)) {
+                    $errors[] = "File #{$i} type not allowed";
+                    continue;
+               }
+               if ($file->getSize() > $maxBytes) {
+                    $errors[] = "File #{$i} exceeds size limit";
+                    continue;
+               }
+
+               $newName = $file->getRandomName();
+               try {
+                    $file->move($uploadPath, $newName);
+               } catch (\Throwable $e) {
+                    $errors[] = "Failed to move file #{$i}";
+                    continue;
+               }
+
+               // parse metadata safely
+               $meta = [];
+               $metaJson = $metas[$i] ?? '{}';
+               $m = json_decode($metaJson, true);
+               if (json_last_error() === JSON_ERROR_NONE && is_array($m)) $meta = $m;
+
+               // normalize/validate geo & timestamp
+               $lat = isset($meta['latitude']) ? (float)$meta['latitude'] : null;
+               $lon = isset($meta['longitude']) ? (float)$meta['longitude'] : null;
+               $accuracy = isset($meta['accuracy']) ? (int)$meta['accuracy'] : null;
+               $geo_dtm = null;
+               if (!empty($meta['timestamp'])) {
+                    $ts = strtotime($meta['timestamp']);
+                    if ($ts !== false) {
+                         $geo_dtm = date('Y-m-d H:i:s', $ts);
+                    }
+               }
+               if (is_null($geo_dtm) && (!is_null($lat) || !is_null($lon) || !is_null($accuracy))) {
+                    $geo_dtm = date('Y-m-d H:i:s');
+               }
+               if (!is_null($lat) && ($lat < -90 || $lat > 90)) $lat = null;
+               if (!is_null($lon) && ($lon < -180 || $lon > 180)) $lon = null;
+               if (!is_null($accuracy) && ($accuracy < 0 || $accuracy > 100000)) $accuracy = null;
+
+               $caption = $meta['caption'] ?? $this->request->getPost('caption') ?? null;
+               $caption = $caption ? trim(strip_tags((string)$caption)) : null;
+
+               try {
+                    // Reuse BrandingChecklistModel so existing listing and delete logic stays consistent
+                    // Save photos against the photo target id (which may be a created branding_checklist id)
+                    $inserted = $photoModel->addPhoto((int)$photoTargetId, $newName, $caption, $lat, $lon, $accuracy, $geo_dtm);
+                    if ($inserted) {
+                         $saved[] = $newName;
+                    } else {
+                         $errors[] = "DB save failed for file #{$i}";
+                         log_message('error', 'DynamicForm::uploadPhoto addPhoto returned false for checklist ' . $photoTargetId . ' file ' . $newName);
+                         // cleanup moved file to avoid leaving orphan files on disk
+                         try {
+                              if (is_file($uploadPath . DIRECTORY_SEPARATOR . $newName)) {
+                                   @unlink($uploadPath . DIRECTORY_SEPARATOR . $newName);
+                              }
+                         } catch (\Throwable $e2) {
+                         }
+                    }
+               } catch (\Throwable $e) {
+                    $errors[] = "DB save exception for file #{$i}";
+                    log_message('error', 'DynamicForm::uploadPhoto addPhoto exception for checklist ' . $sid . ' file ' . $newName . ': ' . $e->getMessage());
+                    // cleanup moved file to avoid leaving orphan files on disk
+                    try {
+                         if (is_file($uploadPath . DIRECTORY_SEPARATOR . $newName)) {
+                              @unlink($uploadPath . DIRECTORY_SEPARATOR . $newName);
+                         }
+                    } catch (\Throwable $e2) {
+                    }
+               }
+          }
+
+          $status = empty($errors) ? 201 : 207; // partial success
+
+          // Debug: fetch and return saved DB rows so client can observe what is stored (helps find mismatches)
+          try {
+               // Return DB rows for the checklist that actually received the photos
+               $rows = $photoModel->getPhotos((int)$photoTargetId);
+               log_message('debug', 'DynamicForm::uploadPhoto saved ' . count($saved) . ' files, DB rows for checklist ' . $photoTargetId . ': ' . json_encode(array_column($rows, 'filename')));
+          } catch (\Throwable $e) {
+               log_message('error', 'DynamicForm::uploadPhoto failed to fetch photos after save: ' . $e->getMessage());
+               $rows = [];
+          }
+
+          // Log duration and summary for diagnostics
+          try {
+               $duration = round(microtime(true) - $uploadStart, 3);
+               log_message('debug', 'DynamicForm::uploadPhoto summary for ' . $sid . ': files=' . count($files) . ', saved=' . count($saved) . ', errors=' . count($errors) . ', duration_s=' . $duration);
+          } catch (\Throwable $e) {
+          }
+
+          // Log photo upload activity
+          try {
+               $lm = new LogsModel();
+               $lm->insertLog([
+                    'uri' => $this->request->getURI()->getPath(),
+                    'method' => $this->request->getMethod(),
+                    'params' => ['saved' => $saved, 'errors' => $errors, 'user_role' => $user->role ?? null],
+                    'entity_id' => (string)$sid,
+                    'user_id' => $user->emp_code ?? $user->username ?? null,
+               ]);
+          } catch (\Throwable $e) {
+               log_message('error', 'DynamicForm::uploadPhoto log failed: ' . $e->getMessage());
+          }
+
+          // If this upload belongs to an existing submission, refresh its updated timestamp and
+          // trigger the submission email again so the generated PDF can include newly uploaded photos.
+          try {
+               // If this upload belongs to an existing submission, refresh its updated timestamp
+               // and trigger the submission email again so the generated PDF can include newly uploaded photos.
+               if ($useSubmissionTable && ctype_digit((string)$originalSid) && !empty($saved) && !empty($sub) && isset($sub['form_id'])) {
+                    $updatedFields = [];
+                    if ($this->tableHasColumn('form_submissions', 'updated_dtm')) {
+                         $updatedFields['updated_dtm'] = date('Y-m-d H:i:s');
+                    }
+                    if ($this->tableHasColumn('form_submissions', 'updated_by')) {
+                         $updatedFields['updated_by'] = $empCode;
+                    }
+                    if (!empty($updatedFields)) {
+                         $db->table('form_submissions')->where('id', (int)$originalSid)->update($updatedFields);
+                    }
+
+                    $headerForTrigger = null;
+                    if (!empty($sub['header'])) {
+                         $headerForTrigger = is_array($sub['header']) ? $sub['header'] : (json_decode((string)$sub['header'], true) ?: null);
+                    }
+
+                    // Only trigger email when this submission is already in 'submitted' state.
+                    // Force trigger using the original submission id so PDF generation looks up photos
+                    // by the submission id (PdfService prefers photos where checklist_id == submission id)
+                    try {
+                         $currentStatus = isset($sub['status']) ? trim((string)$sub['status']) : '';
+                         if ($currentStatus === 'submitted') {
+                              $this->triggerSubmissionEmailOnSave((int)$sub['form_id'], (int)$originalSid, $headerForTrigger, $sub['created_dtm'] ?? date('Y-m-d H:i:s'), ['force' => true]);
+                         } else {
+                              // Log skipping trigger for uploads to draft submissions
+                              @file_put_contents(APPPATH . '../writable/logs/email_trigger_debug.log', "[" . date('Y-m-d H:i:s') . "] uploadPhoto_skip_trigger_not_submitted: submission={$originalSid} status={$currentStatus}\n", FILE_APPEND);
+                         }
+                    } catch (\Throwable $__triggerEx) {
+                         log_message('error', 'DynamicForm::uploadPhoto email trigger failed: ' . $__triggerEx->getMessage());
+                    }
+               }
+          } catch (\Throwable $e) {
+               log_message('error', 'DynamicForm::uploadPhoto email trigger failed: ' . $e->getMessage());
+          }
+
+          return $this->respondCreated([
+               'status' => true,
+               'message' => 'Saved',
+               // 'submission_id' => $numericSubmissionId,
+               // 'submission_uuid' => $submissionUuid
+          ]);
+     }
+
+     // List photos for a dynamic-form submission
+     public function photos($id)
+     {
+          $this->validateAuthorizationNew();
+          $photoModel = model(BrandingChecklistModel::class);
+          $photos = $photoModel->getPhotos((int)$id);
+          log_message('debug', 'DynamicForm::photos called for ' . $id . ', found ' . count($photos) . ' rows');
+
+          // Fallback: if no photos found for this checklist id, try to find a branding_checklists
+          // row that was imported from a dynamic-form submission (centre_name contains
+          // "Imported from dynamic-form {submissionId}") and return photos for that checklist id.
+          if (empty($photos)) {
+               try {
+                    $db = \Config\Database::connect();
+                    $cand = $db->table('branding_checklists')
+                         ->like('centre_name', 'Imported from dynamic-form ' . (int)$id)
+                         ->get()
+                         ->getRowArray();
+                    if (!empty($cand) && isset($cand['id'])) {
+                         $photos = $photoModel->getPhotos((int)$cand['id']);
+                         log_message('debug', 'DynamicForm::photos fallback found checklist ' . $cand['id'] . ' for submission ' . $id . ', photos=' . count($photos));
+                    }
+               } catch (\Throwable $e) {
+                    // ignore fallback failures
+               }
+          }
+
+          foreach ($photos as &$p) {
+               $file = ($p['filename'] ?? '');
+               $p['url'] = base_url('viewAttachmentNewThumb/' . $file);
+               $p['full_url'] = base_url('viewAttachmentNew/' . $file);
+          }
+
+          // Optional debug output when ?debug=1 is provided (helps diagnose empty-list issues without adding noise to normal responses)
+          if ($this->request->getGet('debug')) {
+               return $this->respond(['data' => $photos, 'debug' => ['count' => count($photos), 'filenames' => array_column($photos, 'filename')]], 200);
+          }
+
+          return $this->respond(['data' => $photos], 200);
+     }
+}

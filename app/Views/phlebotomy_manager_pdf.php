@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 
-     <head>
-          <meta charset="utf-8" />
-          <title>Phlebotomy Manager Checklist <?= esc($cctv['id'] ?? '') ?></title>
-          <style>
+<head>
+     <meta charset="utf-8" />
+     <title>Phlebotomy Checklist <?= esc($cctv['id'] ?? '') ?></title>
+     <style>
           body {
                font-family: "Helvetica Neue", Arial, sans-serif;
                color: #1f2937;
@@ -233,12 +233,11 @@
                     padding: 0;
                }
           }
+     </style>
+</head>
 
-          </style>
-     </head>
-
-     <body>
-          <?php
+<body>
+     <?php
      $makeSrc = function ($fn) {
           if (!$fn) return '';
 
@@ -433,31 +432,31 @@
      };
      ?>
 
-          <div class="pdf-wrapper">
-               <div class="pdf-header">
-                    <table>
-                         <tr>
-                              <td style="border:none; padding:0;">
+     <div class="pdf-wrapper">
+          <div class="pdf-header">
+               <table>
+                    <tr>
+                         <td style="border:none; padding:0;">
 
-                                   <?php if ($logoSrc): ?>
+                              <?php if ($logoSrc): ?>
                                    <img src="<?= esc($logoSrc) ?>" class="logo" alt="logo" />
-                                   <?php endif; ?>
+                              <?php endif; ?>
 
-                              </td>
-                              <td style="border:none; padding:0;  ">
+                         </td>
+                         <td style="border:none; padding:0;  ">
 
-                                   <div class="company-name">Vijaya Diagnostic Centre Limited</div>
-                                   <div class="title">Phlebotomy Manager Checklist</div>
+                              <div class="company-name">Vijaya Diagnostic Centre Limited</div>
+                              <div class="title">Phlebotomy Checklist</div>
 
-                              </td>
-                         </tr>
-                    </table>
+                         </td>
+                    </tr>
+               </table>
 
 
-               </div>
+          </div>
 
-               <div class="summary-card">
-                    <?php
+          <div class="summary-card">
+               <?php
                $auditedBy = trim((string) ($cctv['audited_by'] ?? ''));
                $auditedByMobile = trim((string) ($cctv['audited_by_mobile'] ?? $cctv['audited_by_phone'] ?? $cctv['audited_by_contact'] ?? ''));
                $visitedBy = $auditedBy;
@@ -482,24 +481,24 @@
                     }
                }
                ?>
-                    <table class="header-table">
-                         <?php for ($i = 0; $i < count($summaryItems); $i += 2): ?>
+               <table class="header-table">
+                    <?php for ($i = 0; $i < count($summaryItems); $i += 2): ?>
                          <tr>
                               <th><?= esc($summaryItems[$i]['label']) ?></th>
                               <td><?= esc($summaryItems[$i]['value']) ?></td>
                               <?php if (isset($summaryItems[$i + 1])): ?>
-                              <th><?= esc($summaryItems[$i + 1]['label']) ?></th>
-                              <td><?= esc($summaryItems[$i + 1]['value']) ?></td>
+                                   <th><?= esc($summaryItems[$i + 1]['label']) ?></th>
+                                   <td><?= esc($summaryItems[$i + 1]['value']) ?></td>
                               <?php else: ?>
-                              <th></th>
-                              <td></td>
+                                   <th></th>
+                                   <td></td>
                               <?php endif; ?>
                          </tr>
-                         <?php endfor; ?>
-                    </table>
-               </div>
+                    <?php endfor; ?>
+               </table>
+          </div>
 
-               <?php if (!empty($cctv['records'])): ?>
+          <?php if (!empty($cctv['records'])): ?>
                <!-- <h3 class="section-title">Checklist Items</h3> -->
                <?php
                $grouped = [];
@@ -511,14 +510,14 @@
                ?>
 
                <?php foreach ($grouped as $sec => $subs): ?>
-               <h5 class="section-title"><?= esc($sec) ?></h5>
-               <?php foreach ($subs as $sub => $rows): ?>
-               <?php if ($sub !== ''): ?>
-               <b class="subsection-title"><?= esc($sub) ?></b>
-               <?php endif; ?>
-               <table>
-                    <?php foreach ($rows as $r): ?>
-                    <?php
+                    <h5 class="section-title"><?= esc($sec) ?></h5>
+                    <?php foreach ($subs as $sub => $rows): ?>
+                         <?php if ($sub !== ''): ?>
+                              <b class="subsection-title"><?= esc($sub) ?></b>
+                         <?php endif; ?>
+                         <table>
+                              <?php foreach ($rows as $r): ?>
+                                   <?php
                                    $rawLabel = $r['input_label'] ?? $r['input_name'] ?? $r['item_label'] ?? '';
                                    $displayLabel = $rawLabel !== '' ? $rawLabel : '';
                                    if ($displayLabel === '' && !empty($r['input_name'])) {
@@ -526,9 +525,9 @@
                                    }
                                    $displayValue = $formatInputValue($r['input_value'] ?? $r['response'] ?? '');
                                    ?>
-                    <tr>
-                         <td style="width:50% !important;"><?= esc($displayLabel) ?>:</td>
-                         <?php
+                                   <tr>
+                                        <td style="width:50% !important;"><?= esc($displayLabel) ?>:</td>
+                                        <?php
                                         $value = $displayValue;
 
                                         if (str_contains($value, ',')) {
@@ -539,18 +538,18 @@
                                         }
                                         ?>
 
-                         <td style="width:50%; word-break:break-word; overflow-wrap:break-word;">
-                              <strong><?= $value ?></strong>
-                         </td>
-                    </tr>
+                                        <td style="width:50%; word-break:break-word; overflow-wrap:break-word;">
+                                             <strong><?= $value ?></strong>
+                                        </td>
+                                   </tr>
+                              <?php endforeach; ?>
+                         </table>
+
                     <?php endforeach; ?>
-               </table>
-
                <?php endforeach; ?>
-               <?php endforeach; ?>
-               <?php endif; ?>
+          <?php endif; ?>
 
-               <?php
+          <?php
 
           $branchNameDisplay = trim((string) ($cctv['branch_name'] ?? $cctv['centre_name'] ?? ''));
           $photoLabelByFilename = [];
@@ -598,16 +597,16 @@
                          continue;
                     }
           ?>
-               <div class="attachment-wrapper">
-                    <img src="<?= esc($src) ?>" alt="attachment" />
-                    <?php
+                    <div class="attachment-wrapper">
+                         <img src="<?= esc($src) ?>" alt="attachment" />
+                         <?php
                          $photoLabelDisplay = $resolvePhotoLabel($r);
                          if ($photoLabelDisplay === '' && isset($photoLabelByFilename[$filename])) {
                               $photoLabelDisplay = $photoLabelByFilename[$filename];
                          }
                          ?>
-                    <?php if ($photoLabelDisplay !== '' || $createdDtmDisplay || $branchNameDisplay !== ''): ?>
-                    <?php
+                         <?php if ($photoLabelDisplay !== '' || $createdDtmDisplay || $branchNameDisplay !== ''): ?>
+                              <?php
                               $photoMeta = [];
                               if ($photoLabelDisplay !== '') {
                                    $photoMeta[] = 'Label: ' . $photoLabelDisplay;
@@ -619,16 +618,16 @@
                                    $photoMeta[] = 'Branch: ' . $branchNameDisplay;
                               }
                               ?>
-                    <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              </div>
+                         <?php endif; ?>
                     </div>
-                    <?php endif; ?>
-               </div>
-               <?php
+          <?php
                }
           }
           ?>
 
-               <?php if (!empty($cctv['photos'])): ?>
+          <?php if (!empty($cctv['photos'])): ?>
 
                <?php foreach ($cctv['photos'] as $p):
                     $fn = $p['url'] ?? $p['filename'] ?? $p['photo'] ?? $p['file'] ?? '';
@@ -640,7 +639,7 @@
                     $src = $makeSrc($fn);
                     if (!$src) continue;
                ?>
-               <!-- <div style="margin-bottom:16px; page-break-inside: avoid;">
+                    <!-- <div style="margin-bottom:16px; page-break-inside: avoid;">
                     <img src="<?= esc($src) ?>" alt="photo"
                          style="max-height:640px; width:auto; display:block; margin:auto;" />
                     <?php if ($createdDtmDisplay): ?>
@@ -650,17 +649,17 @@
                     <?php endif; ?>
                </div> -->
 
-               <div style="margin-bottom:16px; page-break-inside: avoid;">
-                    <img src="<?= esc($src) ?>" alt="photo"
-                         style="max-height:640px; width:auto; display:block; margin:auto;" />
-                    <?php
+                    <div style="margin-bottom:16px; page-break-inside: avoid;">
+                         <img src="<?= esc($src) ?>" alt="photo"
+                              style="max-height:640px; width:auto; display:block; margin:auto;" />
+                         <?php
                          $photoLabelDisplay = $resolvePhotoLabel($p);
                          if ($photoLabelDisplay === '' && isset($photoLabelByFilename[$filename])) {
                               $photoLabelDisplay = $photoLabelByFilename[$filename];
                          }
                          ?>
-                    <?php if ($photoLabelDisplay !== '' || $createdDtmDisplay || $branchNameDisplay !== ''): ?>
-                    <?php
+                         <?php if ($photoLabelDisplay !== '' || $createdDtmDisplay || $branchNameDisplay !== ''): ?>
+                              <?php
                               $photoMeta = [];
                               if ($photoLabelDisplay !== '') {
                                    $photoMeta[] = 'Label: ' . $photoLabelDisplay;
@@ -672,14 +671,14 @@
                                    $photoMeta[] = 'Branch: ' . $branchNameDisplay;
                               }
                               ?>
-                    <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              <div style="font-size:10px; color:#555; margin-top:4px;"><?= esc(implode(' | ', $photoMeta)) ?>
+                              </div>
+                         <?php endif; ?>
                     </div>
-                    <?php endif; ?>
-               </div>
 
                <?php endforeach; ?>
-               <?php endif; ?>
-          </div>
-     </body>
+          <?php endif; ?>
+     </div>
+</body>
 
 </html>

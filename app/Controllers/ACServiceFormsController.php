@@ -5,17 +5,26 @@ namespace App\Controllers;
 use App\Controllers\BaseController;
 use App\Models\ACServicesFormsModel;
 use CodeIgniter\API\ResponseTrait;
+use App\Models\BranchesModel;
+use App\Models\DeptModel;
 
 class ACServiceFormsController extends BaseController
 {
      use ResponseTrait;
 
      protected $acModel;
+     protected $branchesModel;
+     protected $deptModel;
 
      public function __construct()
      {
           $this->acModel = new ACServicesFormsModel();
+          $this->branchesModel = new BranchesModel();
+          $this->deptModel = new DeptModel();
+          $db = \Config\Database::connect();
+          $secondDB = \Config\Database::connect('secondary');
      }
+
      // getCompletedServicesInSelectedYear()
 
      public function getCompletedServicesInSelectedYear($branchId, $vendorId, $year)
@@ -78,7 +87,7 @@ class ACServiceFormsController extends BaseController
                               // 5. INSERT INTO files TABLE
                               // -------------------------
                               $db->table('files')->insert([
-                                   'file_name'  => $newName,
+                                   'file_name' => $newName,
                                    'ac_form_id' => $insertId,
                                    'service_id' => 'AC',
                                    'createdDTM' => date('Y-m-d H:i:s')
@@ -111,7 +120,7 @@ class ACServiceFormsController extends BaseController
                // -------------------------
 
                $db->table('files')->insert([
-                    'file_name'  => $pdfFileName,
+                    'file_name' => $pdfFileName,
                     'ac_form_id' => $insertId,
                     'service_id' => 'AC_PDF',
                     'createdDTM' => date('Y-m-d H:i:s')
@@ -122,7 +131,7 @@ class ACServiceFormsController extends BaseController
                //  prepare email payload
 
                $emailPayload = [
-                    'pdf_file_id'   => $pdfFileId,
+                    'pdf_file_id' => $pdfFileId,
                     'pdf_file_path' => $pdfFilePath,
                ];
 
@@ -147,7 +156,7 @@ class ACServiceFormsController extends BaseController
                          'response_code' => 201,
                          'action' => 'createACService',
                          'entity_type' => 'ac_service_form',
-                         'entity_id' => (string)$insertId,
+                         'entity_id' => (string) $insertId,
                          'user_id' => $data['created_by'] ?? null, // adjust if you store empCode/session user
                     ]);
                } catch (\Throwable $e) {
@@ -184,20 +193,548 @@ class ACServiceFormsController extends BaseController
           }
      }
 
-     /**
-      * READ ALL
-      */
+
+
      public function list()
      {
-          $data = $this->acModel
+          /*
+     * =========================================================
+     * 1. Authorization
+     * =========================================================
+     */
+          $auth = $this->validateAuthorizationNew();
+
+          if (empty($auth)) {
+               return $this->respond([
+                    'message' => 'Unauthorized'
+               ], 401);
+          }
+
+          /*
+     * Authorization can also be stdClass.
+     */
+          if (is_object($auth)) {
+               $auth = (array) $auth;
+          }
+
+          $empCode = $auth['emp_code'] ?? null;
+
+          if (empty($empCode)) {
+               return $this->respond([
+                    'message' => 'Employee code not found'
+               ], 401);
+          }
+
+
+          /*
+     * =========================================================
+     * 2. Get branches mapped to logged-in employee
+     * =========================================================
+     */
+          $deptModel = new DeptModel();
+
+          $userBranchMap = $deptModel->getUserMapBranches($empCode);
+
+          if (empty($userBranchMap)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+          /*
+     * Normalize result to array.
+     *
+     * getUserMapBranches() may return:
+     *
+     * [
+     *     stdClass Object(...)
+     * ]
+     *
+     * OR
+     *
+     * [
+     *     [...]
+     * ]
+     */
+          if (is_object($userBranchMap)) {
+               $userBranchMap = [$userBranchMap];
+          }
+
+          /*
+     * Normalize first row.
+     */
+          $firstBranchMap = $userBranchMap[0] ?? null;
+
+          if (is_object($firstBranchMap)) {
+               $firstBranchMap = (array) $firstBranchMap;
+          }
+
+          if (!is_array($firstBranchMap)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+          /*
+     * Get branch mapping.
+     */
+          $mappedBranches = $firstBranchMap['branches'] ?? '';
+
+          if (empty($mappedBranches)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 3. Get actual branches assigned to employee
+     * =========================================================
+     */
+          $userBranches = $deptModel->getUserBranches($mappedBranches);
+
+          if (empty($userBranches)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+          /*
+     * If one stdClass is returned instead of an array
+     * containing stdClass objects, normalize it.
+     */
+          if (is_object($userBranches)) {
+               $userBranches = [$userBranches];
+          }
+
+
+          /*
+     * =========================================================
+     * 4. Extract allowed Branch SysNos
+     * =========================================================
+     */
+          $allowedSysNos = [];
+
+          foreach ($userBranches as $branch) {
+
+               /*
+         * Convert stdClass -> array.
+         */
+               if (is_object($branch)) {
+                    $branch = (array) $branch;
+               }
+
+               if (!is_array($branch)) {
+                    continue;
+               }
+
+               /*
+         * IMPORTANT:
+         *
+         * Prefer SysNo because BMW branch_id contains
+         * Branches.SysNo.
+         */
+               if (
+                    isset($branch['SysNo']) &&
+                    $branch['SysNo'] !== ''
+               ) {
+                    $allowedSysNos[] = (string) $branch['SysNo'];
+               } elseif (
+                    isset($branch['sysno']) &&
+                    $branch['sysno'] !== ''
+               ) {
+                    $allowedSysNos[] = (string) $branch['sysno'];
+               } elseif (
+                    isset($branch['branch_id']) &&
+                    $branch['branch_id'] !== ''
+               ) {
+                    $allowedSysNos[] = (string) $branch['branch_id'];
+               }
+          }
+
+          /*
+     * Remove duplicates.
+     */
+          $allowedSysNos = array_values(
+               array_unique(
+                    array_filter($allowedSysNos)
+               )
+          );
+
+          /*
+     * No branches assigned.
+     */
+          if (empty($allowedSysNos)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 5. Get BMW records
+     * =========================================================
+     */
+          $bmwData = $this->acModel
                ->orderBy('id', 'DESC')
                ->findAll();
 
+          if (empty($bmwData)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+          /*
+     * Normalize BMW result.
+     *
+     * This is important because your acModel may have:
+     *
+     * protected $returnType = 'object';
+     *
+     * If so, findAll() returns stdClass objects.
+     */
+          foreach ($bmwData as &$bmwRow) {
+
+               if (is_object($bmwRow)) {
+                    $bmwRow = (array) $bmwRow;
+               }
+          }
+
+          unset($bmwRow);
+
+
+          /*
+     * =========================================================
+     * 6. Filter BMW records by user's mapped branches
+     *
+     * BMW branch_id = Branches.SysNo
+     * =========================================================
+     */
+          $bmwData = array_values(
+               array_filter(
+                    $bmwData,
+                    function ($row) use ($allowedSysNos) {
+
+                         if (is_object($row)) {
+                              $row = (array) $row;
+                         }
+
+                         if (!is_array($row)) {
+                              return false;
+                         }
+
+                         if (!isset($row['branch_id'])) {
+                              return false;
+                         }
+
+                         return in_array(
+                              (string) $row['branch_id'],
+                              $allowedSysNos,
+                              true
+                         );
+                    }
+               )
+          );
+
+
+          /*
+     * No BMW records for user's branches.
+     */
+          if (empty($bmwData)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 7. Get database connection
+     * =========================================================
+     */
+          $db = $this->acModel->db;
+
+
+          /*
+     * =========================================================
+     * 8. Get BMW branch SysNos
+     * =========================================================
+     */
+          $sysNos = [];
+
+          foreach ($bmwData as $row) {
+
+               if (is_object($row)) {
+                    $row = (array) $row;
+               }
+
+               if (
+                    is_array($row) &&
+                    isset($row['branch_id']) &&
+                    $row['branch_id'] !== ''
+               ) {
+                    $sysNos[] = (string) $row['branch_id'];
+               }
+          }
+
+          $sysNos = array_values(
+               array_unique(
+                    array_filter($sysNos)
+               )
+          );
+
+
+          if (empty($sysNos)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 9. Get Branches
+     * =========================================================
+     */
+          $branches = $this->branchesModel
+               ->whereIn('SysNo', $sysNos)
+               ->findAll();
+
+          if (empty($branches)) {
+               /*
+         * BMW data exists but branch master data doesn't.
+         *
+         * Still return BMW records.
+         */
+               foreach ($bmwData as &$row) {
+
+                    if (is_object($row)) {
+                         $row = (array) $row;
+                    }
+
+                    $row['cluster_id'] = null;
+                    $row['cluster']    = null;
+                    $row['z_id']       = null;
+                    $row['zone']       = null;
+               }
+
+               unset($row);
+
+               return $this->respond([
+                    'status' => true,
+                    'data'   => $bmwData
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 10. Normalize Branch records
+     * =========================================================
+     */
+          foreach ($branches as &$branch) {
+
+               if (is_object($branch)) {
+                    $branch = (array) $branch;
+               }
+          }
+
+          unset($branch);
+
+
+          /*
+     * =========================================================
+     * 11. Branches.SysNo => Branches.id
+     * =========================================================
+     */
+          $branchMap = [];
+
+          foreach ($branches as $branch) {
+
+               if (!is_array($branch)) {
+                    continue;
+               }
+
+               if (
+                    isset($branch['SysNo']) &&
+                    isset($branch['id'])
+               ) {
+                    $branchMap[(string) $branch['SysNo']]
+                         = (int) $branch['id'];
+               }
+          }
+
+          $branchIds = array_values($branchMap);
+
+
+          /*
+     * =========================================================
+     * 12. Get clusters
+     * =========================================================
+     */
+          $clusterRows = $db->table('clusters')
+               ->select('cluster_id, cluster, branches')
+               ->where('status', 'A')
+               ->get()
+               ->getResultArray();
+
+          $clusters = [];
+
+          foreach ($clusterRows as $cluster) {
+
+               $clusterBranchIds = array_filter(
+                    array_map(
+                         'trim',
+                         explode(',', $cluster['branches'] ?? '')
+                    )
+               );
+
+               foreach ($branchIds as $branchId) {
+
+                    if (
+                         in_array(
+                              (string) $branchId,
+                              $clusterBranchIds,
+                              true
+                         )
+                    ) {
+                         $clusters[$branchId] = [
+                              'cluster_id' => $cluster['cluster_id'],
+                              'cluster'    => $cluster['cluster']
+                         ];
+
+                         break;
+                    }
+               }
+          }
+
+
+          /*
+     * =========================================================
+     * 13. Get zones
+     * =========================================================
+     */
+          $zoneRows = $db->table('zones')
+               ->select('z_id, zone, clusters')
+               ->where('status', 'A')
+               ->get()
+               ->getResultArray();
+
+          $zones = [];
+
+          foreach ($clusters as $branchId => $cluster) {
+
+               foreach ($zoneRows as $zone) {
+
+                    $zoneClusterIds = array_filter(
+                         array_map(
+                              'trim',
+                              explode(',', $zone['clusters'] ?? '')
+                         )
+                    );
+
+                    if (
+                         in_array(
+                              (string) $cluster['cluster_id'],
+                              $zoneClusterIds,
+                              true
+                         )
+                    ) {
+                         $zones[$branchId] = [
+                              'z_id' => $zone['z_id'],
+                              'zone' => $zone['zone']
+                         ];
+
+                         break;
+                    }
+               }
+          }
+
+
+          /*
+     * =========================================================
+     * 14. Add cluster and zone information
+     * =========================================================
+     */
+          foreach ($bmwData as &$row) {
+
+               /*
+         * Ensure row is an array.
+         */
+               if (is_object($row)) {
+                    $row = (array) $row;
+               }
+
+               $sysNo = (string) ($row['branch_id'] ?? '');
+
+               /*
+         * Find Branches.id from Branches.SysNo.
+         */
+               $branchId = $branchMap[$sysNo] ?? null;
+
+               /*
+         * Default values.
+         */
+               $row['cluster_id'] = null;
+               $row['cluster']    = null;
+               $row['z_id']       = null;
+               $row['zone']       = null;
+
+               /*
+         * Cluster.
+         */
+               if (
+                    $branchId !== null &&
+                    isset($clusters[$branchId])
+               ) {
+                    $row['cluster_id'] =
+                         $clusters[$branchId]['cluster_id'];
+
+                    $row['cluster'] =
+                         $clusters[$branchId]['cluster'];
+               }
+
+               /*
+         * Zone.
+         */
+               if (
+                    $branchId !== null &&
+                    isset($zones[$branchId])
+               ) {
+                    $row['z_id'] =
+                         $zones[$branchId]['z_id'];
+
+                    $row['zone'] =
+                         $zones[$branchId]['zone'];
+               }
+          }
+
+          unset($row);
+
+
+          /*
+     * =========================================================
+     * 15. Return response
+     * =========================================================
+     */
           return $this->respond([
                'status' => true,
-               'data' => $data
+               'data'   => $bmwData
           ]);
      }
+
+
 
      /**
       * READ SINGLE
@@ -300,10 +837,10 @@ class ACServiceFormsController extends BaseController
                               );
 
                               $db->table('files')->insert([
-                                   'file_name'   => $newName,
-                                   'service_id'  => 'AC',
-                                   'ac_form_id'  => $id,
-                                   'createdDTM'  => date('Y-m-d H:i:s')
+                                   'file_name' => $newName,
+                                   'service_id' => 'AC',
+                                   'ac_form_id' => $id,
+                                   'createdDTM' => date('Y-m-d H:i:s')
                               ]);
                          }
                     }
@@ -448,10 +985,10 @@ class ACServiceFormsController extends BaseController
                     $bg = imagecolorallocate($thumb, 255, 255, 255);
                     imagefill($thumb, 0, 0, $bg);
                     $scale = min($thumbW / $w, $thumbH / $h);
-                    $newW = (int)($w * $scale);
-                    $newH = (int)($h * $scale);
-                    $dstX = (int)(($thumbW - $newW) / 2);
-                    $dstY = (int)(($thumbH - $newH) / 2);
+                    $newW = (int) ($w * $scale);
+                    $newH = (int) ($h * $scale);
+                    $dstX = (int) (($thumbW - $newW) / 2);
+                    $dstY = (int) (($thumbH - $newH) / 2);
                     imagecopyresampled($thumb, $src, $dstX, $dstY, 0, 0, $newW, $newH, $w, $h);
                     if ($ext === 'png') {
                          imagepng($thumb, $thumbPath);
@@ -501,27 +1038,22 @@ class ACServiceFormsController extends BaseController
                );
 
                if ($formId <= 0) {
-
                     $msg = "Invalid form_id supplied";
-
                     log_message('error', $msg);
-
                     @file_put_contents(
                          $logFile,
                          "[" . date('Y-m-d H:i:s') . "] FAIL: {$msg}\n",
                          FILE_APPEND
                     );
-
                     return;
                }
 
                $db = \Config\Database::connect();
-
                /*
-          |--------------------------------------------------------------------------
-          | Load Email Template
-          |--------------------------------------------------------------------------
-          */
+               |--------------------------------------------------------------------------
+               | Load Email Template
+               |--------------------------------------------------------------------------
+               */
                $tmpl = $db->table('email_templates')
                     ->where('form_id', $formId)
                     ->get()
@@ -599,7 +1131,7 @@ class ACServiceFormsController extends BaseController
                $recipients = [];
 
                $customTo = trim(
-                    (string)(getenv('AC_SERVICE_TO_EMAIL') ?: '')
+                    (string) (getenv('AC_SERVICE_TO_EMAIL') ?: '')
                );
 
                if ($customTo !== '') {

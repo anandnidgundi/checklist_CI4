@@ -5,6 +5,8 @@ namespace App\Controllers;
 use App\Controllers\BaseController;
 use App\Models\DrinkingWaterModel;
 use CodeIgniter\API\ResponseTrait;
+use App\Models\BranchesModel;
+use App\Models\DeptModel;
 
 class DrinkingWaterController extends BaseController
 {
@@ -13,10 +15,14 @@ class DrinkingWaterController extends BaseController
      protected $drinkingWaterModel;
      protected $db;
 
+     protected $branchesModel;
+     protected $deptModel;
      public function __construct()
      {
           $this->drinkingWaterModel = new DrinkingWaterModel();
           $this->db = db_connect();
+          $this->branchesModel = new BranchesModel();
+          $this->deptModel = new DeptModel();
      }
 
      public function getFiles($id)
@@ -497,13 +503,543 @@ class DrinkingWaterController extends BaseController
       */
      public function list()
      {
-          $data = $this->drinkingWaterModel
+          /*
+     * =========================================================
+     * 1. Authorization
+     * =========================================================
+     */
+          $auth = $this->validateAuthorizationNew();
+
+          if (empty($auth)) {
+               return $this->respond([
+                    'message' => 'Unauthorized'
+               ], 401);
+          }
+
+          /*
+     * Authorization can be array or stdClass.
+     */
+          if (is_object($auth)) {
+               $auth = (array) $auth;
+          }
+
+          $empCode = $auth['emp_code'] ?? null;
+
+          if (empty($empCode)) {
+               return $this->respond([
+                    'message' => 'Employee code not found'
+               ], 401);
+          }
+
+
+          /*
+     * =========================================================
+     * 2. Get branches mapped to logged-in employee
+     * =========================================================
+     */
+          $deptModel = new DeptModel();
+
+          $userBranchMap = $deptModel->getUserMapBranches($empCode);
+
+          if (empty($userBranchMap)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+          /*
+     * getUserMapBranches() may return:
+     *
+     * [
+     *     ['branches' => '15,62,7']
+     * ]
+     *
+     * OR:
+     *
+     * [
+     *     stdClass Object(...)
+     * ]
+     */
+          if (is_object($userBranchMap)) {
+               $userBranchMap = [$userBranchMap];
+          }
+
+          /*
+     * Get first row.
+     */
+          $firstBranchMap = $userBranchMap[0] ?? null;
+
+          if (is_object($firstBranchMap)) {
+               $firstBranchMap = (array) $firstBranchMap;
+          }
+
+          if (!is_array($firstBranchMap)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+          /*
+     * Get mapped branches.
+     */
+          $mappedBranches = $firstBranchMap['branches'] ?? '';
+
+          if (empty($mappedBranches)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 3. Get actual branches assigned to employee
+     * =========================================================
+     */
+          $userBranches = $deptModel->getUserBranches($mappedBranches);
+
+          if (empty($userBranches)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+          /*
+     * Normalize if a single stdClass is returned.
+     */
+          if (is_object($userBranches)) {
+               $userBranches = [$userBranches];
+          }
+
+
+          /*
+     * =========================================================
+     * 4. Extract allowed Branch SysNos
+     * =========================================================
+     */
+          $allowedSysNos = [];
+
+          foreach ($userBranches as $branch) {
+
+               /*
+         * Convert stdClass to array.
+         */
+               if (is_object($branch)) {
+                    $branch = (array) $branch;
+               }
+
+               if (!is_array($branch)) {
+                    continue;
+               }
+
+               /*
+         * Drinking Water branch_id should contain
+         * Branches.SysNo.
+         */
+               if (
+                    isset($branch['SysNo']) &&
+                    $branch['SysNo'] !== ''
+               ) {
+                    $allowedSysNos[] = (string) $branch['SysNo'];
+               } elseif (
+                    isset($branch['sysno']) &&
+                    $branch['sysno'] !== ''
+               ) {
+                    $allowedSysNos[] = (string) $branch['sysno'];
+               } elseif (
+                    isset($branch['branch_id']) &&
+                    $branch['branch_id'] !== ''
+               ) {
+                    $allowedSysNos[] = (string) $branch['branch_id'];
+               }
+          }
+
+          /*
+     * Remove duplicate branch SysNos.
+     */
+          $allowedSysNos = array_values(
+               array_unique(
+                    array_filter($allowedSysNos)
+               )
+          );
+
+          /*
+     * No branches mapped to employee.
+     */
+          if (empty($allowedSysNos)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 5. Get Drinking Water records
+     * =========================================================
+     */
+          $drinkingWaterData = $this->drinkingWaterModel
                ->orderBy('id', 'DESC')
                ->findAll();
 
+          if (empty($drinkingWaterData)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * Normalize Drinking Water records.
+     *
+     * Handles both array and stdClass return types.
+     */
+          foreach ($drinkingWaterData as &$waterRow) {
+
+               if (is_object($waterRow)) {
+                    $waterRow = (array) $waterRow;
+               }
+          }
+
+          unset($waterRow);
+
+
+          /*
+     * =========================================================
+     * 6. Filter Drinking Water records
+     *    by user's mapped branches
+     *
+     * Drinking Water branch_id = Branches.SysNo
+     * =========================================================
+     */
+          $drinkingWaterData = array_values(
+               array_filter(
+                    $drinkingWaterData,
+                    function ($row) use ($allowedSysNos) {
+
+                         if (is_object($row)) {
+                              $row = (array) $row;
+                         }
+
+                         if (!is_array($row)) {
+                              return false;
+                         }
+
+                         if (!isset($row['branch_id'])) {
+                              return false;
+                         }
+
+                         return in_array(
+                              (string) $row['branch_id'],
+                              $allowedSysNos,
+                              true
+                         );
+                    }
+               )
+          );
+
+
+          /*
+     * No Drinking Water records for user's branches.
+     */
+          if (empty($drinkingWaterData)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 7. Database connection used by drinkingWaterModel
+     * =========================================================
+     */
+          $db = $this->drinkingWaterModel->db;
+
+
+          /*
+     * =========================================================
+     * 8. Get branch SysNos from filtered records
+     * =========================================================
+     */
+          $sysNos = [];
+
+          foreach ($drinkingWaterData as $row) {
+
+               if (is_object($row)) {
+                    $row = (array) $row;
+               }
+
+               if (
+                    is_array($row) &&
+                    isset($row['branch_id']) &&
+                    $row['branch_id'] !== ''
+               ) {
+                    $sysNos[] = (string) $row['branch_id'];
+               }
+          }
+
+          $sysNos = array_values(
+               array_unique(
+                    array_filter($sysNos)
+               )
+          );
+
+          if (empty($sysNos)) {
+               return $this->respond([
+                    'status' => true,
+                    'data'   => []
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 9. Get Branches from travelapp database
+     *
+     * branchesModel should have:
+     *
+     * protected $DBGroup = 'travelapp';
+     * =========================================================
+     */
+          $branches = $this->branchesModel
+               ->whereIn('SysNo', $sysNos)
+               ->findAll();
+
+
+          /*
+     * If branch master data is not found,
+     * return filtered Drinking Water records.
+     */
+          if (empty($branches)) {
+
+               foreach ($drinkingWaterData as &$row) {
+
+                    if (is_object($row)) {
+                         $row = (array) $row;
+                    }
+
+                    $row['cluster_id'] = null;
+                    $row['cluster']    = null;
+                    $row['z_id']       = null;
+                    $row['zone']       = null;
+               }
+
+               unset($row);
+
+               return $this->respond([
+                    'status' => true,
+                    'data'   => $drinkingWaterData
+               ]);
+          }
+
+
+          /*
+     * =========================================================
+     * 10. Normalize Branch records
+     * =========================================================
+     */
+          foreach ($branches as &$branch) {
+
+               if (is_object($branch)) {
+                    $branch = (array) $branch;
+               }
+          }
+
+          unset($branch);
+
+
+          /*
+     * =========================================================
+     * 11. Map:
+     *
+     * Branches.SysNo => Branches.id
+     * =========================================================
+     */
+          $branchMap = [];
+
+          foreach ($branches as $branch) {
+
+               if (!is_array($branch)) {
+                    continue;
+               }
+
+               if (
+                    isset($branch['SysNo']) &&
+                    isset($branch['id'])
+               ) {
+                    $branchMap[(string) $branch['SysNo']]
+                         = (int) $branch['id'];
+               }
+          }
+
+
+          /*
+     * Get all Branches.id values.
+     */
+          $branchIds = array_values($branchMap);
+
+
+          /*
+     * =========================================================
+     * 12. Get clusters
+     * =========================================================
+     */
+          $clusterRows = $db->table('clusters')
+               ->select('cluster_id, cluster, branches')
+               ->where('status', 'A')
+               ->get()
+               ->getResultArray();
+
+          $clusters = [];
+
+          foreach ($clusterRows as $cluster) {
+
+               $clusterBranchIds = array_filter(
+                    array_map(
+                         'trim',
+                         explode(',', $cluster['branches'] ?? '')
+                    )
+               );
+
+               foreach ($branchIds as $branchId) {
+
+                    if (
+                         in_array(
+                              (string) $branchId,
+                              $clusterBranchIds,
+                              true
+                         )
+                    ) {
+                         $clusters[$branchId] = [
+                              'cluster_id' => $cluster['cluster_id'],
+                              'cluster'    => $cluster['cluster']
+                         ];
+
+                         break;
+                    }
+               }
+          }
+
+
+          /*
+     * =========================================================
+     * 13. Get zones
+     * =========================================================
+     */
+          $zoneRows = $db->table('zones')
+               ->select('z_id, zone, clusters')
+               ->where('status', 'A')
+               ->get()
+               ->getResultArray();
+
+          $zones = [];
+
+          foreach ($clusters as $branchId => $cluster) {
+
+               foreach ($zoneRows as $zone) {
+
+                    $zoneClusterIds = array_filter(
+                         array_map(
+                              'trim',
+                              explode(',', $zone['clusters'] ?? '')
+                         )
+                    );
+
+                    if (
+                         in_array(
+                              (string) $cluster['cluster_id'],
+                              $zoneClusterIds,
+                              true
+                         )
+                    ) {
+                         $zones[$branchId] = [
+                              'z_id' => $zone['z_id'],
+                              'zone' => $zone['zone']
+                         ];
+
+                         break;
+                    }
+               }
+          }
+
+
+          /*
+     * =========================================================
+     * 14. Add cluster and zone information
+     * =========================================================
+     */
+          foreach ($drinkingWaterData as &$row) {
+
+               /*
+         * Ensure row is an array.
+         */
+               if (is_object($row)) {
+                    $row = (array) $row;
+               }
+
+               $sysNo = (string) ($row['branch_id'] ?? '');
+
+               /*
+         * Find Branches.id using Branches.SysNo.
+         */
+               $branchId = $branchMap[$sysNo] ?? null;
+
+               /*
+         * Default values.
+         */
+               $row['cluster_id'] = null;
+               $row['cluster']    = null;
+               $row['z_id']       = null;
+               $row['zone']       = null;
+
+               /*
+         * Cluster.
+         */
+               if (
+                    $branchId !== null &&
+                    isset($clusters[$branchId])
+               ) {
+                    $row['cluster_id'] =
+                         $clusters[$branchId]['cluster_id'];
+
+                    $row['cluster'] =
+                         $clusters[$branchId]['cluster'];
+               }
+
+               /*
+         * Zone.
+         */
+               if (
+                    $branchId !== null &&
+                    isset($zones[$branchId])
+               ) {
+                    $row['z_id'] =
+                         $zones[$branchId]['z_id'];
+
+                    $row['zone'] =
+                         $zones[$branchId]['zone'];
+               }
+          }
+
+          unset($row);
+
+
+          /*
+     * =========================================================
+     * 15. Return filtered response
+     * =========================================================
+     */
           return $this->respond([
                'status' => true,
-               'data' => $data
+               'data'   => $drinkingWaterData
           ]);
      }
 

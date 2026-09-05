@@ -520,6 +520,9 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], 'dynamic-form/update/(:segment)', 'DynamicFormController::update/$1', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'dynamic-form/it-dashboard-count', 'DynamicFormController::itDashboardCounts', ['filter' => 'authFilter']);
 
+     $routes->match(['GET', 'OPTIONS'], 'dynamic-form/excel-list', 'DynamicFormController::excelList', ['filter' => 'authFilter']);
+
+
      // Admin: re-run email trigger for an existing submission (best-effort)
      $routes->match(['POST', 'options'], 'dynamic-form/(:num)/resend-email', 'DynamicFormController::resendEmail/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], 'dynamic-form/(:num)/debug', 'DynamicFormController::debugSubmission/$1', ['filter' => 'authFilter']);
@@ -589,8 +592,6 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['GET', 'options'], 'branch-ac-vendor-mapping/mapping_details/(:any)/(:any)', 'BranchACVendorMapping::mapping_details/$1/$2', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'], 'getMappedDetailsByBranchId/(:any)', 'BranchACVendorMapping::getMappedDetailsByBranchId/$1', ['filter' => 'authFilter']);
 
-
-
      $routes->match(['GET', 'options'], 'ac-services/', 'ACServiceController::list/$1', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'ac-services/create', 'ACServiceController::create', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'ac-services/delete/(:segment)', 'ACServiceController::delete/$1', ['filter' => 'authFilter']);
@@ -621,6 +622,8 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], 'biomedical-equipment-forms/delete/(:segment)', 'BiomedicalEquipment::delete/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'],  'biomedical-equipment-forms/show/(:segment)', 'BiomedicalEquipment::show/$1', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'biomedical-equipment-forms/update/(:segment)', 'BiomedicalEquipment::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'biomedical-equipment-forms/getChakriDatalistByBranchName/(:any)', 'BiomedicalEquipment::getChakriDatalistByBranchName/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'biomedical-equipment-forms/getChakriDataByAssetId/(:any)', 'BiomedicalEquipment::getChakriDataByAssetId/$1', ['filter' => 'authFilter']);
 
      // bmw 
      $routes->match(['POST', 'options'], 'bmw/create', 'BMW::create', ['filter' => 'authFilter']);
@@ -629,6 +632,8 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], 'bmw/delete/(:segment)', 'BMW::delete/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'],  'bmw/show/(:segment)', 'BMW::show/$1', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'bmw/update/(:segment)', 'BMW::update/$1', ['filter' => 'authFilter']);
+     $routes->match(['GET', 'options'], 'bmw/total-visits-done/(:segment)', 'BMW::total_visits_done/$1', ['filter' => 'authFilter']);
+
 
      // Drinking Water controller
      $routes->match(['GET', 'options'], 'drinking-water', 'DrinkingWaterController::list', ['filter' => 'authFilter']);
@@ -662,4 +667,9 @@ $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->match(['POST', 'options'], 'pest-control/delete/(:segment)', 'PestControl::delete/$1', ['filter' => 'authFilter']);
      $routes->match(['GET', 'options'],  'pest-control/show/(:segment)', 'PestControl::show/$1', ['filter' => 'authFilter']);
      $routes->match(['POST', 'options'], 'pest-control/update/(:segment)', 'PestControl::update/$1', ['filter' => 'authFilter']);
+     // lastRecordByBranch
+     $routes->match(['GET', 'options'], 'pest-control/lastRecordByBranch/(:segment)', 'PestControl::lastRecordByBranch/$1', ['filter' => 'authFilter']);
+
+     // get user profile
+     $routes->match(['GET', 'options'], 'getUserDetails/(:segment)', 'Profile::getUserDetails/$1', ['filter' => 'authFilter']);
 });

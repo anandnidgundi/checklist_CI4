@@ -19,6 +19,7 @@ class FormSubmissionsModel extends Model
           'dept_id',
           'header',
           'status',
+          'is_email_sent',
           'created_by',
           'created_dtm',
           'updated_dtm',
