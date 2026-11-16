@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Controllers\BaseController;
 use CodeIgniter\API\ResponseTrait;
 use App\Models\UserModel;
+use App\Models\Logs_sessionsModel;
 use \Firebase\JWT\JWT;
 use CodeIgniter\HTTP\UserAgent;
 
@@ -160,7 +161,8 @@ class Login extends BaseController
                     'user_name' => $user->fname . ' ' . $user->lname,
                     'token' => $token,
                ];
-               $insert = $userModel->insertLoginData($data);
+               $logsModel = new Logs_sessionsModel();
+               $insert = $logsModel->insert($data);
           }
           //  if($user->role == 'SUPER_ADMIN' || $user->role == 'ADMIN' || $user->role == 'BM' || $user->role == 'CM'){
           return $this->respond([
@@ -170,7 +172,6 @@ class Login extends BaseController
                'role' => $user->role,
           ], 200);
      }
-
 
      public function index1()
      {

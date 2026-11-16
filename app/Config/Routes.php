@@ -121,6 +121,8 @@ $routes->GET('backend/pdf/facade_download/(:any)', 'PdfController::facadeCleanin
 $routes->GET('pdf/pest_control_download/(:any)', 'PdfController::pestControlPdfDownload/$1');
 $routes->GET('backend/pdf/pest_control_download/(:any)', 'PdfController::pestControlPdfDownload/$1');
 
+// getUserProfiles
+$routes->POST('api/getUserData', 'Profile::getUserData');
 
 $routes->group("api", ['filter' => 'cors:api'], function ($routes) {
      $routes->POST("register", "Register::index");

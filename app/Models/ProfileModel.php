@@ -87,4 +87,17 @@ class ProfileModel extends Model
 
           return false;
      }
+
+     public function getUserData($bmid)
+     {
+          if ($bmid > 0) {
+               return $this->select('n.*')
+                    ->from('new_emp_master as n')
+                    ->where('n.emp_code', $bmid)
+                    ->get()
+                    ->getRow();
+          }
+
+          return false;
+     }
 }

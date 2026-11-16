@@ -63,6 +63,41 @@ class Profile extends BaseController
           return $profileModel->where('emp_code', $bmid)->first();
      }
 
+     public function getUserData()
+     {
+          // For form-data / x-www-form-urlencoded
+          $bmid = $this->request->getPost('bmid');
+
+          // If you are sending JSON, use:
+          // $data = $this->request->getJSON(true);
+          // $bmid = $data['bmid'] ?? null;
+
+          if (empty($bmid)) {
+               return $this->response->setJSON([
+                    'status'  => false,
+                    'message' => 'Employee code is required'
+               ])->setStatusCode(400);
+          }
+
+          $profileModel = new ProfileModel();
+
+          $profile = $profileModel->getUserData($bmid);
+
+          if (!$profile) {
+               return $this->response->setJSON([
+                    'status'  => false,
+                    'message' => 'User profile not found'
+               ])->setStatusCode(404);
+          }
+
+          return $this->response->setJSON([
+               'status' => true,
+               'data'   => $profile
+          ]);
+     }
+
+
+
      public function getUserDetails($bmid)
      {
           $profileModel = new ProfileModel();

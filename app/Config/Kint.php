@@ -25,41 +25,41 @@ class Kint
     |--------------------------------------------------------------------------
     */
 
-    /**
-     * @var list<class-string<ConstructablePluginInterface>|ConstructablePluginInterface>|null
-     */
-    public $plugins;
+     /**
+      * @var list<class-string<ConstructablePluginInterface>|ConstructablePluginInterface>|null
+      */
+     public $plugins;
 
-    public int $maxDepth           = 6;
-    public bool $displayCalledFrom = true;
-    public bool $expanded          = false;
+     public int $maxDepth           = 6;
+     public bool $displayCalledFrom = true;
+     public bool $expanded          = false;
 
-    /*
+     /*
     |--------------------------------------------------------------------------
     | RichRenderer Settings
     |--------------------------------------------------------------------------
     */
-    public string $richTheme = 'aante-light.css';
-    public bool $richFolder  = false;
-    public int $richSort     = AbstractRenderer::SORT_FULL;
+     public string $richTheme = 'aante-light.css';
+     public bool $richFolder  = false;
+     public int $richSort     = AbstractRenderer::SORT_FULL;
 
-    /**
-     * @var array<string, class-string<ValuePluginInterface>>|null
-     */
-    public $richObjectPlugins;
+     /**
+      * @var array<string, class-string<ValuePluginInterface>>|null
+      */
+     public $richObjectPlugins;
 
-    /**
-     * @var array<string, class-string<TabPluginInterface>>|null
-     */
-    public $richTabPlugins;
+     /**
+      * @var array<string, class-string<TabPluginInterface>>|null
+      */
+     public $richTabPlugins;
 
-    /*
+     /*
     |--------------------------------------------------------------------------
     | CLI Settings
     |--------------------------------------------------------------------------
     */
-    public bool $cliColors      = true;
-    public bool $cliForceUTF8   = false;
-    public bool $cliDetectWidth = true;
-    public int $cliMinWidth     = 40;
+     public bool $cliColors      = true;
+     public bool $cliForceUTF8   = false;
+     public bool $cliDetectWidth = true;
+     public int $cliMinWidth     = 40;
 }
